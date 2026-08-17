@@ -3,3 +3,4 @@ data/uploads/
 data/admin.json
 *.log
 .DS_Store
+data/logs/

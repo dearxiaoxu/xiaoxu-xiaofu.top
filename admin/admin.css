@@ -574,3 +574,20 @@ input, textarea, select { font-family: inherit; font-size: 0.95rem; color: var(-
   .list-row .icon-btn { margin-top: 0; align-self: flex-end; }
   .pw-row { flex-direction: column; }
 }
+
+/* ---------- 运行日志 ---------- */
+.log-toolbar { margin-bottom: 12px; }
+
+.log-view {
+  background: #171410;
+  color: #e8dfd0;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  padding: 16px 18px;
+  border-radius: 12px;
+  max-height: 62vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

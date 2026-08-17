@@ -15,6 +15,8 @@ const DATA_DIR = path.join(ROOT, "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const ADMIN_FILE = path.join(DATA_DIR, "admin.json");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
+const LOG_DIR = path.join(DATA_DIR, "logs");
+const LOG_FILE = path.join(LOG_DIR, "site.log");
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
@@ -22,7 +24,7 @@ const TOKEN_TTL = 7 * 24 * 3600 * 1000; // 7 天
 const BODY_LIMIT = 16 * 1024 * 1024;    // 16MB（含 base64 图片）
 
 /* ---------- 初始化 ---------- */
-for (const dir of [DATA_DIR, UPLOAD_DIR]) {
+for (const dir of [DATA_DIR, UPLOAD_DIR, LOG_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 if (!fs.existsSync(DB_FILE)) {
@@ -101,6 +103,39 @@ function saveDB(db) {
   fs.renameSync(tmp, DB_FILE); // 原子替换，避免写坏
 }
 
+/* ---------- 操作日志：控制台(journald) + data/logs/site.log ---------- */
+function rotateLogs() {
+  try { if (fs.existsSync(LOG_FILE + ".2")) fs.unlinkSync(LOG_FILE + ".2"); } catch (e) {}
+  try { if (fs.existsSync(LOG_FILE + ".1")) fs.renameSync(LOG_FILE + ".1", LOG_FILE + ".2"); } catch (e) {}
+  try { if (fs.existsSync(LOG_FILE)) fs.renameSync(LOG_FILE, LOG_FILE + ".1"); } catch (e) {}
+}
+function log(level, msg) {
+  const line = "[" + new Date().toISOString() + "] [" + level + "] " + msg;
+  console.log(line);
+  try {
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > 2 * 1024 * 1024) rotateLogs();
+    fs.appendFileSync(LOG_FILE, line + "\n");
+  } catch (e) { /* 日志写盘失败不影响服务 */ }
+}
+function tailLogs(maxLines) {
+  const files = [LOG_FILE, LOG_FILE + ".1", LOG_FILE + ".2"].filter(function (f) {
+    try { return fs.existsSync(f) && fs.statSync(f).size > 0; } catch (e) { return false; }
+  });
+  const lines = [];
+  for (let i = files.length - 1; i >= 0 && lines.length < maxLines; i--) {
+    let content = "";
+    try {
+      const st = fs.statSync(files[i]);
+      const start = Math.max(0, st.size - 512 * 1024);
+      content = fs.readFileSync(files[i], "utf-8").slice(start);
+      if (st.size > 512 * 1024 && i !== 0) content = content.slice(content.indexOf("\n") + 1);
+    } catch (e) { continue; }
+    const part = content.split("\n").filter(Boolean);
+    lines.unshift.apply(lines, part.slice(-(maxLines - lines.length)));
+  }
+  return lines.slice(-maxLines);
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -175,23 +210,35 @@ async function handleAPI(req, res, pathname) {
   if (pathname === "/api/login" && req.method === "POST") {
     const ip = req.socket.remoteAddress || "unknown";
     if (!rateCheck(loginFails, ip, 5, 60 * 1000)) {
+      log("AUTH", "登录尝试过多被限流 ip=" + ip);
       return sendJSON(res, 429, { error: "尝试次数过多，请一分钟后再试" });
     }
     let body;
     try { body = JSON.parse(await readBody(req, 1024)); } catch (e) { body = {}; }
     const given = hashPassword(body.password || "", admin.salt);
     const ok = crypto.timingSafeEqual(Buffer.from(given, "hex"), Buffer.from(admin.hash, "hex"));
-    if (!ok) return sendJSON(res, 401, { error: "密码错误" });
-    return sendJSON(res, 200, { ok: true, token: newToken() });
+    if (!ok) {
+      log("AUTH", "登录失败 ip=" + ip);
+      return sendJSON(res, 401, { error: "密码错误" });
+    }
+    const token = newToken();
+    log("AUTH", "登录成功 ip=" + ip + " token=" + token.slice(0, 8) + "…");
+    return sendJSON(res, 200, { ok: true, token: token });
   }
 
   if (pathname === "/api/content" && req.method === "PUT") {
-    if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+    const ip = req.socket.remoteAddress || "unknown";
+    if (!authOk(req)) {
+      log("ADMIN", "内容保存被拒绝（未授权） ip=" + ip);
+      return sendJSON(res, 401, { error: "unauthorized" });
+    }
     let body;
     try { body = JSON.parse(await readBody(req, BODY_LIMIT)); } catch (e) {
+      log("ADMIN", "内容保存被拒绝（JSON 无效） ip=" + ip);
       return sendJSON(res, 400, { error: "无效的 JSON" });
     }
     if (typeof body !== "object" || body === null || Array.isArray(body)) {
+      log("ADMIN", "内容保存被拒绝（数据格式错误） ip=" + ip);
       return sendJSON(res, 400, { error: "数据必须是对象" });
     }
     for (const key of ["site", "hero", "about", "posts", "projects", "gallery", "contact", "messages"]) {
@@ -201,7 +248,11 @@ async function handleAPI(req, res, pathname) {
     if (!Array.isArray(body.projects)) body.projects = [];
     if (!Array.isArray(body.gallery)) body.gallery = [];
     if (!Array.isArray(body.messages)) body.messages = [];
-    try { saveDB(body); } catch (e) { return sendJSON(res, 500, { error: "保存失败：" + e.message }); }
+    try { saveDB(body); } catch (e) {
+      log("ADMIN", "内容保存失败 ip=" + ip + " 原因=" + e.message);
+      return sendJSON(res, 500, { error: "保存失败：" + e.message });
+    }
+    log("ADMIN", "内容已保存 ip=" + ip + " 文章=" + body.posts.length + " 项目=" + body.projects.length + " 相册=" + body.gallery.length);
     return sendJSON(res, 200, { ok: true });
   }
 
@@ -215,6 +266,7 @@ async function handleAPI(req, res, pathname) {
     admin = { salt, hash: hashPassword(pw, salt) };
     fs.writeFileSync(ADMIN_FILE, JSON.stringify(admin, null, 2));
     tokens.clear(); // 修改密码后所有会话失效
+    log("ADMIN", "管理员密码已修改 ip=" + (req.socket.remoteAddress || "unknown"));
     return sendJSON(res, 200, { ok: true });
   }
 
@@ -227,21 +279,28 @@ async function handleAPI(req, res, pathname) {
     const name = String(body.name || "image.jpg").replace(/[^\w.\-\u4e00-\u9fa5]/g, "_");
     const ext = path.extname(name).toLowerCase();
     const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".ico"];
-    if (!allowed.includes(ext)) return sendJSON(res, 400, { error: "仅支持 jpg/png/gif/webp/avif/svg 图片" });
+    const ip = req.socket.remoteAddress || "unknown";
+    if (!allowed.includes(ext)) {
+      log("ADMIN", "图片上传被拒绝（扩展名不合法） ip=" + ip + " 文件=" + name);
+      return sendJSON(res, 400, { error: "仅支持 jpg/png/gif/webp/avif/svg 图片" });
+    }
     const data = String(body.data || "");
     if (data.length < 10 || data.length > 12 * 1024 * 1024) {
+      log("ADMIN", "图片上传被拒绝（数据缺失或过大） ip=" + ip);
       return sendJSON(res, 400, { error: "图片数据缺失或过大（≤8MB）" });
     }
     const buf = Buffer.from(data, "base64");
     if (buf.length === 0) return sendJSON(res, 400, { error: "base64 解码失败" });
     const finalName = Date.now() + "-" + name;
     fs.writeFileSync(path.join(UPLOAD_DIR, finalName), buf);
+    log("ADMIN", "图片上传成功 ip=" + ip + " 文件=" + finalName + " 大小=" + (buf.length / 1024).toFixed(0) + "KB");
     return sendJSON(res, 200, { ok: true, url: "/uploads/" + finalName });
   }
 
   if (pathname === "/api/messages" && req.method === "POST") {
     const ip = req.socket.remoteAddress || "unknown";
     if (!rateCheck(msgRate, ip, 3, 10 * 60 * 1000)) {
+      log("MSG", "留言被限流 ip=" + ip);
       return sendJSON(res, 429, { error: "留言太频繁啦，休息一下再来～" });
     }
     let body;
@@ -255,7 +314,14 @@ async function handleAPI(req, res, pathname) {
     db.messages.unshift({ id: "m-" + Date.now(), name, text, time: Date.now() });
     db.messages = db.messages.slice(0, 200); // 最多保留 200 条
     saveDB(db);
+    log("MSG", "新留言 ip=" + ip + " 昵称=" + name + " 长度=" + text.length);
     return sendJSON(res, 200, { ok: true });
+  }
+
+  if (pathname === "/api/logs" && req.method === "GET") {
+    if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+    const n = Math.min(Math.max(parseInt(String((new URL(req.url, "http://x")).searchParams.get("lines")) || "200", 10) || 200, 1), 1000);
+    return sendJSON(res, 200, { lines: tailLogs(n), file: "data/logs/site.log", note: "单文件超过 2MB 自动轮转为 site.log.1/.2" });
   }
 
   return sendJSON(res, 404, { error: "not found" });
@@ -265,11 +331,21 @@ async function handleAPI(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   const pathname = u.pathname;
+  const start = Date.now();
+  const ip = req.socket.remoteAddress || "unknown";
+  const ext = path.extname(pathname).toLowerCase();
+  const isAsset = [".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".avif", ".woff2", ".map"].includes(ext);
+
+  // 请求日志：记录所有 API 与页面访问（静态资源太吵，跳过）
+  res.on("finish", function () {
+    if (isAsset && !pathname.startsWith("/api/")) return;
+    log("REQ", req.method + " " + decodeURIComponent(u.pathname + u.search).slice(0, 140) + " → " + res.statusCode + " " + (Date.now() - start) + "ms ip=" + ip);
+  });
 
   if (pathname.startsWith("/api/")) {
     try { await handleAPI(req, res, pathname); }
     catch (e) {
-      console.error("[api]", e);
+      log("ERR", pathname + " 异常: " + (e && e.message ? e.message : e));
       try { sendJSON(res, 500, { error: "server error" }); } catch (_) { /* 连接已断 */ }
     }
     return;
@@ -278,6 +354,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  log("INFO", "服务启动 端口=" + PORT + " 日志目录=" + LOG_DIR);
   console.log("==============================================");
   console.log("  小徐小福 · 小站已启动");
   console.log("  前台:      http://localhost:" + PORT);

@@ -25,7 +25,8 @@
     { key: 'projects', label: '项目管理', icon: '🛠️' },
     { key: 'gallery', label: '相册管理', icon: '🖼️' },
     { key: 'contact', label: '联系与留言', icon: '✉️' },
-    { key: 'data', label: '数据与安全', icon: '🔐' }
+    { key: 'data', label: '数据与安全', icon: '🔐' },
+    { key: 'logs', label: '运行日志', icon: '📋' }
   ];
 
   var PAGE_TITLES = {
@@ -36,7 +37,8 @@
     projects: '项目管理',
     gallery: '相册管理',
     contact: '联系与留言',
-    data: '数据与安全'
+    data: '数据与安全',
+    logs: '运行日志'
   };
 
   /* ============================================================
@@ -703,6 +705,25 @@
     section('说明', '<p class="f-hint">所有内容保存在服务端 db.json。每个标签页底部的「保存修改」都会把整份数据库提交到服务端。</p>');
   }
 
+  function loadLogs() {
+    api('/api/logs?lines=200').then(function (r) {
+      var box = $('log-view');
+      if (!box) return;
+      box.textContent = r.lines && r.lines.length ? r.lines.join('\n') : '（暂无日志）';
+    }).catch(function (err) {
+      if (err.status !== 401) toast('日志加载失败：' + (err.message || ''), 'err');
+    });
+  }
+
+  function renderLogs() {
+    setTimeout(loadLogs, 0);
+    return section('操作日志（最近 200 条）', [
+      '<p class="f-hint">记录所有 API 请求与关键操作（登录、保存、上传、留言等）。日志保存在服务器 data/logs/site.log，超过 2MB 自动轮转。</p>',
+      '<div class="log-toolbar"><button class="btn" data-action="refresh-logs">🔄 刷新日志</button></div>',
+      '<pre id="log-view" class="log-view">加载中…</pre>'
+    ].join(''));
+  }
+
   var renderers = {
     site: renderSite,
     hero: renderHero,
@@ -711,7 +732,8 @@
     projects: renderProjects,
     gallery: renderGallery,
     contact: renderContact,
-    data: renderData
+    data: renderData,
+    logs: renderLogs
   };
 
   /* ============================================================
@@ -724,6 +746,7 @@
     });
     $('page-title').textContent = PAGE_TITLES[key] || '管理后台';
     $('view').innerHTML = renderers[key] ? renderers[key]() : '';
+    if (key === 'logs') setTimeout(loadLogs, 0);
     closeSidebar();
     window.scrollTo(0, 0);
   }
@@ -1085,6 +1108,9 @@
         break;
       case 'change-password':
         changePassword();
+        break;
+      case 'refresh-logs':
+        loadLogs();
         break;
       /* import 走 change 事件，不在此处理 */
     }
