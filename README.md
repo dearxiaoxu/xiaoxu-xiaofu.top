@@ -71,6 +71,8 @@ npm start
 
 ## 部署上线
 
+> 🚀 **有云服务器？直接看 [deploy/部署指南.md](deploy/部署指南.md)**：上传项目 → `sudo bash deploy/deploy.sh` 一键部署（自动装 Node、systemd 守护、开机自启、数据保护）。大陆服务器需先完成 ICP 备案再绑域名。
+
 本版需要 Node 运行环境（后台与存储依赖服务端）。可选方案：
 
 1. **云容器平台（推荐，最省心）**：Railway / Render / Fly.io —— 直接导入本目录，启动命令 `node server.js`；设置环境变量 `PORT`（平台要求）与 `ADMIN_PASSWORD`（初始密码）；持久化磁盘挂载 `data/` 目录。
