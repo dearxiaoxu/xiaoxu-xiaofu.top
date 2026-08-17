@@ -1,0 +1,9 @@
+{
+  "name": "xiaoxu-xiaofu-site",
+  "version": "2.0.0",
+  "description": "xiaoxu & xiaofu 的小站：零依赖 Node 服务 + 管理后台 + JSON 存储",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=14" }
+}
