@@ -5,5 +5,5 @@
   "scripts": {
     "start": "node server.js"
   },
-  "engines": { "node": ">=14" }
+  "engines": { "node": ">=22.13.0" }
 }

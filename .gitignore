@@ -1,6 +1,9 @@
 node_modules/
 data/uploads/
 data/admin.json
+data/site.db
+data/site.db-wal
+data/site.db-shm
 *.log
 .DS_Store
 data/logs/

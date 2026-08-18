@@ -9,10 +9,10 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const store = require("./store");
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
-const DB_FILE = path.join(DATA_DIR, "db.json");
 const ADMIN_FILE = path.join(DATA_DIR, "admin.json");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const LOG_DIR = path.join(DATA_DIR, "logs");
@@ -27,9 +27,7 @@ const BODY_LIMIT = 16 * 1024 * 1024;    // 16MB（含 base64 图片）
 for (const dir of [DATA_DIR, UPLOAD_DIR, LOG_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ site: {}, hero: {}, about: {}, posts: [], projects: [], gallery: [], contact: {}, messages: [] }, null, 2));
-}
+store.open();
 
 // 管理员凭据：首次启动用默认密码，登录后可修改
 let admin = null;
@@ -110,14 +108,6 @@ function readBody(req, limit) {
 }
 function safeDecode(s) {
   try { return decodeURIComponent(s); } catch (e) { return String(s); }
-}
-function loadDB() {
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-}
-function saveDB(db) {
-  const tmp = DB_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
-  fs.renameSync(tmp, DB_FILE); // 原子替换，避免写坏
 }
 
 /* ---------- 操作日志：控制台(journald) + data/logs/site.log ---------- */
@@ -256,7 +246,7 @@ function serveStatic(req, res, pathname) {
 /* ---------- API ---------- */
 async function handleAPI(req, res, pathname) {
   if (pathname === "/api/content" && req.method === "GET") {
-    try { return sendJSON(res, 200, loadDB()); }
+    try { return sendJSON(res, 200, store.getContent()); }
     catch (e) { return sendJSON(res, 500, { error: "db read failed" }); }
   }
 
@@ -304,7 +294,7 @@ async function handleAPI(req, res, pathname) {
     for (const key of ["site", "hero", "about", "contact"]) {
       if (!body[key] || typeof body[key] !== "object" || Array.isArray(body[key])) body[key] = {};
     }
-    try { saveDB(body); } catch (e) {
+    try { store.saveContent(body); } catch (e) {
       log("ADMIN", "内容保存失败 ip=" + ip + " 原因=" + e.message);
       return sendJSON(res, 500, { error: "保存失败：" + e.message });
     }
@@ -320,7 +310,9 @@ async function handleAPI(req, res, pathname) {
     if (pw.length < 6) return sendJSON(res, 400, { error: "密码至少 6 位" });
     const salt = crypto.randomBytes(16).toString("hex");
     admin = { salt, hash: hashPassword(pw, salt) };
-    fs.writeFileSync(ADMIN_FILE, JSON.stringify(admin, null, 2));
+    const tmp = ADMIN_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(admin, null, 2));
+    fs.renameSync(tmp, ADMIN_FILE); // 原子替换，避免写坏
     tokens.clear(); // 修改密码后所有会话失效
     log("ADMIN", "管理员密码已修改 ip=" + clientIp(req));
     return sendJSON(res, 200, { ok: true });
@@ -365,11 +357,12 @@ async function handleAPI(req, res, pathname) {
     const name = String(body.name || "匿名").replace(/[\r\n\t]+/g, " ").trim().slice(0, 40);
     const text = String(body.text || "").trim().slice(0, 1000);
     if (!text) return sendJSON(res, 400, { error: "留言内容不能为空" });
-    const db = loadDB();
-    db.messages = Array.isArray(db.messages) ? db.messages : [];
-    db.messages.unshift({ id: "m-" + Date.now(), name, text, time: Date.now() });
-    db.messages = db.messages.slice(0, 200); // 最多保留 200 条
-    saveDB(db);
+    store.addMessage({
+      id: "m-" + Date.now() + "-" + crypto.randomBytes(6).toString("hex"),
+      name,
+      text,
+      time: Date.now()
+    });
     log("MSG", "新留言 ip=" + ip + " 昵称=" + name + " 长度=" + text.length);
     return sendJSON(res, 200, { ok: true });
   }

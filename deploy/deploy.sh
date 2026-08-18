@@ -28,20 +28,25 @@ fi
 
 # ---------- 1. Node.js ----------
 if ! command -v node >/dev/null 2>&1; then
-  info "未检测到 Node.js，正在安装…"
+  info "未检测到 Node.js，正在安装 Node.js 22 LTS（内置 SQLite）…"
   if command -v apt-get >/dev/null 2>&1; then
     run apt-get update -y
-    run apt-get install -y nodejs npm
+    run apt-get install -y ca-certificates curl gnupg
+    run bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
+    run apt-get install -y nodejs
   elif command -v dnf >/dev/null 2>&1; then
-    run dnf install -y nodejs npm
+    run bash -c "curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -"
+    run dnf install -y nodejs
   elif command -v yum >/dev/null 2>&1; then
-    run yum install -y nodejs npm
+    run bash -c "curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -"
+    run yum install -y nodejs
   else
-    fail "无法识别的包管理器，请先手动安装 Node.js（版本 ≥14）"
+    fail "无法识别的包管理器，请先手动安装 Node.js（版本 ≥22.13.0）"
   fi
 fi
-NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
-[ "$NODE_MAJOR" -ge 14 ] || fail "Node.js 版本过低（当前 $(node -v)），需要 ≥14"
+if ! node -e 'var p=process.version.slice(1).split(".").map(Number); var ok=p[0]>22||(p[0]===22&&(p[1]>13||(p[1]===13))); process.exit(ok?0:1)'; then
+  fail "Node.js 版本过低（当前 $(node -v)），本版需要 ≥22.13.0（内置 node:sqlite）"
+fi
 info "Node.js $(node -v) ✓"
 
 # ---------- 2. 同步项目文件 ----------
