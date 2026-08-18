@@ -250,7 +250,74 @@
       '<div class="article-meta"><span>✍️ ' + esc(p.author || "") + '</span><time datetime="' + esc(p.date) + '">' + esc(p.date) + '</time><span class="chip">' + esc(p.category || "") + '</span></div>' +
       '</header>' +
       '<div class="article-body">' + md(p.body) + '</div>' +
-      '<div class="article-back"><a class="btn btn-ghost" href="blog.html">← 返回博客列表</a></div>';
+      '<div class="article-back"><a class="btn btn-ghost" href="blog.html">← 返回博客列表</a></div>' +
+      '<section class="article-comments">' +
+      '<h2>💬 评论</h2>' +
+      '<div id="comment-list"><p style="color:var(--ink-3);">加载评论中…</p></div>' +
+      '<form id="comment-form" class="comment-form">' +
+      '<div class="form-row">' +
+      '<div class="form-field"><label for="c-name">昵称</label><input type="text" id="c-name" name="name" maxlength="20" placeholder="怎么称呼你"></div>' +
+      '</div>' +
+      '<div class="form-field"><label for="c-text">想说的话</label><textarea id="c-text" name="text" rows="3" maxlength="500" placeholder="写下你的评论吧～"></textarea></div>' +
+      '<input type="text" name="hp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">' +
+      '<button type="submit" class="btn btn-primary magnetic">发表评论 →</button>' +
+      '<p class="form-note"></p>' +
+      '</form>' +
+      '</section>';
+    loadPostComments(id);
+    bindCommentForm(id);
+  }
+
+  var commentCache = [];
+  function renderCommentList() {
+    var box = $("comment-list");
+    if (!box) return;
+    if (!commentCache.length) {
+      box.innerHTML = '<p style="color:var(--ink-3);">还没有评论，来抢沙发吧 🛋️</p>';
+      return;
+    }
+    box.innerHTML = commentCache.map(function (c) {
+      var d = new Date(c.time || Date.now());
+      var ts = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      return '<div class="card comment-item"><div class="msg-head"><b>' + esc(c.name || "匿名") + '</b><time>' + ts + '</time></div><p>' + esc(c.text) + '</p></div>';
+    }).join("");
+  }
+
+  function loadPostComments(postId) {
+    fetch("/api/comments?postId=" + encodeURIComponent(postId), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { commentCache = d.comments || []; renderCommentList(); })
+      .catch(function () {
+        var b = $("comment-list");
+        if (b) b.innerHTML = '<p style="color:var(--ink-3);">评论加载失败，请刷新重试</p>';
+      });
+  }
+
+  function bindCommentForm(postId) {
+    var form = $("comment-form");
+    if (!form) return;
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = form.querySelector('[name="name"]').value.trim();
+      var text = form.querySelector('[name="text"]').value.trim();
+      var note = form.querySelector(".form-note");
+      if (!text) { if (note) note.textContent = "评论内容不能为空～"; return; }
+      fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: postId, name: name || "匿名", text: text })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) {
+          form.reset();
+          if (note) note.textContent = "评论成功 🎉";
+          loadPostComments(postId);
+        } else if (d.error) {
+          if (note) note.textContent = d.error;
+        }
+      }).catch(function () {
+        if (note) note.textContent = "评论发送失败，请稍后再试";
+      });
+    });
   }
 
   function renderProjects() {

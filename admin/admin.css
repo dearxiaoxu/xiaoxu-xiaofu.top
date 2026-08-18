@@ -698,3 +698,34 @@ input, textarea, select { font-family: inherit; font-size: 0.95rem; color: var(-
   color: var(--ink-3);
   font-size: 0.86rem;
 }
+
+/* ---------- 访问统计 ---------- */
+.stat-cards { display: flex; flex-wrap: wrap; gap: 12px; }
+.stat-card {
+  flex: 1 1 140px;
+  background: var(--card, #fff);
+  border: 1px solid var(--line, #e9e0cf);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.stat-card b { display: block; font-size: 1.6rem; color: #FA8952; font-family: Georgia, "Songti SC", serif; }
+.stat-card span { font-size: 0.8rem; color: var(--ink-2, #6b6255); }
+
+.mini-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.mini-table th, .mini-table td { padding: 8px 10px; border-bottom: 1px solid var(--line, #e9e0cf); text-align: left; }
+.mini-table th { color: var(--ink-3, #a49a88); font-weight: 600; }
+
+/* ---------- 评论管理 ---------- */
+.admin-comment-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #e9e0cf);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: var(--card, #fff);
+}
+.ac-text { font-size: 0.92rem; color: var(--ink, #26211a); margin-bottom: 4px; white-space: pre-wrap; }

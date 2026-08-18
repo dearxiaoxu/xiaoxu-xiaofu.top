@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FA8952"/>
+      <stop offset="0.55" stop-color="#FAA652"/>
+      <stop offset="1" stop-color="#FAD352"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1080" cy="90" r="220" fill="#ffffff" opacity="0.10"/>
+  <circle cx="120" cy="580" r="260" fill="#ffffff" opacity="0.08"/>
+  <rect x="90" y="90" width="1020" height="450" rx="36" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2"/>
+  <text x="600" y="270" text-anchor="middle" font-family="Georgia, 'Songti SC', 'PingFang SC', serif" font-size="88" font-weight="bold" fill="#ffffff">xiaoxu &amp; xiaofu</text>
+  <text x="600" y="360" text-anchor="middle" font-family="'PingFang SC', 'Songti SC', sans-serif" font-size="40" fill="#ffffff" opacity="0.95">他写代码，她画生活</text>
+  <text x="600" y="440" text-anchor="middle" font-family="'PingFang SC', sans-serif" font-size="26" fill="#ffffff" opacity="0.85">记录两个人的旅行 · 美食 · 猫与四季</text>
+  <text x="600" y="560" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="24" fill="#ffffff" opacity="0.75">www.xiaoxu-xiaofu.top</text>
+</svg>

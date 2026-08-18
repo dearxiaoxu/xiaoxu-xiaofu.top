@@ -53,6 +53,14 @@ npm start
 - **联系与留言**：联系方式卡片、访客留言查看与删除
 - **数据与安全**：一键导出/导入内容 JSON 备份、修改管理员密码
 
+## 新增能力（整改 P0）
+
+- **文章级评论**：每篇文章可评论（防刷限频 + 蜜罐 + 转义），后台「评论管理」可删除
+- **社交分享图**：全站 og:image 服务端注入（1200×630），后台「站点设置」可上传自定义分享图
+- **SEO**：`/robots.txt` + `/sitemap.xml` 动态生成，文章页 title/description 服务端注入（爬虫可抓）
+- **访问统计**：自研 PV/UV/热帖 TOP5，仅后台「数据与安全」可见，前台零痕迹；`/api/counter` 提供公开总访问量
+- **技术感动效**：页面转场、自定义光标、滚动进度条、Hero 入场动画、终端状态块（均支持 reduced-motion 降级）
+
 ## API 一览
 
 | 方法 | 路径 | 说明 |
@@ -63,6 +71,13 @@ npm start
 | POST | `/api/upload` | 上传图片 `{"name","data(base64)"}` → `{"url"}`（需 token） |
 | PUT | `/api/password` | 修改管理员密码 `{"password"}`（需 token） |
 | POST | `/api/messages` | 访客留言 `{"name","text"}`（带频率限制与蜜罐） |
+| GET | `/api/comments?postId=` | 文章评论列表（公开） |
+| POST | `/api/comments` | 发表评论 `{"postId","name","text"}`（限频+蜜罐） |
+| GET/DELETE | `/api/comments` | 全量评论 / 删除评论（需 token） |
+| GET | `/api/stats` | 访问统计 PV/UV/热帖（需 token） |
+| GET | `/api/counter` | 公开总访问量 `{"pv"}` |
+| GET | `/api/logs` | 运行日志（需 token） |
+| GET | `/robots.txt` · `/sitemap.xml` | 搜索引擎收录文件（动态生成） |
 
 ## 存储与备份
 

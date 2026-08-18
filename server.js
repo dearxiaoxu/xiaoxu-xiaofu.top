@@ -17,6 +17,7 @@ const ADMIN_FILE = path.join(DATA_DIR, "admin.json");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const LOG_DIR = path.join(DATA_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "site.log");
+const STATS_FILE = path.join(DATA_DIR, "stats.json");
 const BOUNDARY_DIR = path.join(ROOT, "assets", "boundaries");
 const CHINA_MAP_FILE = path.join(ROOT, "assets", "china-provinces.json");
 const PORT = process.env.PORT || 3000;
@@ -150,6 +151,57 @@ function tailLogs(maxLines) {
   return lines.slice(-maxLines);
 }
 
+/* ---------- 访问统计：内存计数 + 60s 落盘 data/stats.json ---------- */
+let stats = { totalPv: 0, days: {}, posts: {} }; // days: {"YYYY-MM-DD": {pv, uv}}
+let uvSet = new Set();
+let uvDay = "";
+function todayStr(d) {
+  const x = d || new Date();
+  return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+}
+function loadStats() {
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      const s = JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
+      if (s && typeof s === "object") {
+        stats.totalPv = Number(s.totalPv) || 0;
+        stats.days = (s.days && typeof s.days === "object") ? s.days : {};
+        stats.posts = (s.posts && typeof s.posts === "object") ? s.posts : {};
+      }
+    }
+  } catch (e) { /* 统计文件损坏则从头计数 */ }
+  uvDay = todayStr();
+}
+function flushStats() {
+  // 只保留最近 90 天明细
+  const days = {};
+  Object.keys(stats.days).sort().slice(-90).forEach(function (k) { days[k] = stats.days[k]; });
+  stats.days = days;
+  try {
+    fs.writeFileSync(STATS_FILE + ".tmp", JSON.stringify(stats));
+    fs.renameSync(STATS_FILE + ".tmp", STATS_FILE);
+  } catch (e) { /* 忽略 */ }
+}
+function recordView(pathname, postId, ip) {
+  if (pathname.startsWith("/api/") || pathname.startsWith("/admin")) return;
+  stats.totalPv++;
+  const day = todayStr();
+  if (!stats.days[day]) stats.days[day] = { pv: 0, uv: 0 };
+  stats.days[day].pv++;
+  if (day !== uvDay) { uvSet.clear(); uvDay = day; }
+  if (!uvSet.has(ip)) {
+    uvSet.add(ip);
+    stats.days[day].uv++;
+    if (uvSet.size > 200000) uvSet.clear(); // 极端情况下防内存膨胀
+  }
+  if (postId) {
+    if (!stats.posts[postId]) stats.posts[postId] = { views: 0 };
+    stats.posts[postId].views++;
+  }
+}
+loadStats();
+setInterval(flushStats, 60 * 1000).unref();
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -185,6 +237,79 @@ function isForbiddenPath(p) {
     if (q === blocked[i] || q.startsWith(blocked[i] + "/")) return true;
   }
   return false;
+}
+
+/* ---------- SEO：服务端往 HTML 注入 title/description/og 元信息（爬虫不执行 JS） ---------- */
+function attr(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function replaceMeta(html, re, content) {
+  if (content === undefined || content === null) return html;
+  return html.replace(re, function (m) { return m.replace(/content="[^"]*"/, 'content="' + attr(content) + '"'); });
+}
+function injectMeta(html, meta) {
+  let out = html;
+  if (meta.title) out = out.replace(/<title>[\s\S]*?<\/title>/, "<title>" + attr(meta.title) + "</title>");
+  out = replaceMeta(out, /<meta name="description"[^>]*>/, meta.description);
+  out = replaceMeta(out, /<meta property="og:title"[^>]*>/, meta.ogTitle);
+  out = replaceMeta(out, /<meta property="og:description"[^>]*>/, meta.ogDescription);
+  out = replaceMeta(out, /<meta property="og:url"[^>]*>/, meta.ogUrl);
+  out = replaceMeta(out, /<link rel="canonical"[^>]*>/, meta.canonical);
+  if (meta.ogImage) {
+    out = out.replace(/<meta property="og:image"[^>]*>\s*/g, "");
+    out = out.replace(/<meta property="og:image:(width|height)"[^>]*>\s*/g, "");
+    out = out.replace("</head>",
+      '<meta property="og:image" content="' + attr(meta.ogImage) + '">\n  ' +
+      '<meta property="og:image:width" content="1200">\n  ' +
+      '<meta property="og:image:height" content="630">\n</head>');
+  }
+  return out;
+}
+function routeMeta(req, pathname) {
+  const content = store.getContent();
+  const site = content.site || {};
+  const domain = "https://" + (site.domain || "www.xiaoxu-xiaofu.top");
+  const defaultImage = site.shareImage || "/assets/og-default.png";
+  const abs = function (img) {
+    img = String(img || defaultImage);
+    return /^https?:/.test(img) ? img : domain + img;
+  };
+  const isPost = pathname === "/post.html" || pathname === "/post";
+  const meta = { ogImage: abs(defaultImage) };
+  if (isPost) {
+    const id = new URL(req.url, "http://x").searchParams.get("id");
+    const p = (content.posts || []).find(function (x) { return x.id === id; });
+    if (p) {
+      meta.title = p.title + " · " + (site.name || "");
+      meta.description = p.excerpt || site.description || "";
+      meta.ogTitle = p.title;
+      meta.ogDescription = p.excerpt || site.description || "";
+      meta.ogImage = abs(p.cover);
+      meta.ogUrl = domain + "/post.html?id=" + encodeURIComponent(p.id);
+      meta.canonical = meta.ogUrl;
+    } else {
+      meta.title = "文章 · " + (site.name || "");
+      meta.ogTitle = meta.title;
+      meta.description = site.description || "";
+      meta.ogDescription = site.description || "";
+    }
+  } else {
+    const pageTitles = {
+      "/": "", "/index.html": "",
+      "/about.html": "关于我们", "/blog.html": "博客", "/projects.html": "项目作品",
+      "/gallery.html": "生活瞬间", "/contact.html": "联系我们", "/cities.html": "城市足迹"
+    };
+    const pt = Object.prototype.hasOwnProperty.call(pageTitles, pathname) ? pageTitles[pathname] : null;
+    if (pt !== null) {
+      meta.title = pt ? pt + " · " + (site.name || "") : (site.name || "") + " · " + (site.title || "");
+      meta.ogTitle = pt || (site.name || "");
+      meta.description = site.description || "";
+      meta.ogDescription = site.description || "";
+    }
+    meta.ogUrl = domain + (pathname === "/" ? "/" : pathname);
+    meta.canonical = meta.ogUrl;
+  }
+  return meta;
 }
 
 /* ---------- 静态文件 ---------- */
@@ -244,6 +369,14 @@ function serveStatic(req, res, pathname) {
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": cacheControl,
     });
+    // HTML：服务端注入 SEO 元信息（爬虫/分享卡片不执行 JS）
+    if (ext === ".html") {
+      fs.readFile(filePath, "utf-8", function (rerr, html) {
+        if (rerr) { res.end("Not Found"); return; }
+        res.end(injectMeta(html, routeMeta(req, urlPath)));
+      });
+      return;
+    }
     fs.createReadStream(filePath).pipe(res);
   });
 }
@@ -372,6 +505,77 @@ async function handleAPI(req, res, pathname) {
     return sendJSON(res, 200, { ok: true });
   }
 
+  // 访问统计（仅后台可见）
+  if (pathname === "/api/stats" && req.method === "GET") {
+    if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+    const content = store.getContent();
+    const days = Object.keys(stats.days).sort().slice(-7).map(function (k) {
+      return { date: k, pv: stats.days[k].pv, uv: stats.days[k].uv };
+    });
+    const topPosts = Object.keys(stats.posts)
+      .map(function (id) { return { id: id, views: stats.posts[id].views }; })
+      .sort(function (a, b) { return b.views - a.views; })
+      .slice(0, 5)
+      .map(function (e) {
+        const p = (content.posts || []).find(function (x) { return x.id === e.id; });
+        return { id: e.id, title: p ? p.title : "（已删除）", views: e.views };
+      });
+    return sendJSON(res, 200, {
+      totalPv: stats.totalPv,
+      today: stats.days[todayStr()] || { pv: 0, uv: 0 },
+      days: days,
+      topPosts: topPosts
+    });
+  }
+
+  // 公开总访问量（供前台终端状态块显示，不暴露任何明细）
+  if (pathname === "/api/counter" && req.method === "GET") {
+    return sendJSON(res, 200, { pv: stats.totalPv });
+  }
+
+  // 文章级评论
+  if (pathname === "/api/comments" && req.method === "GET") {
+    const postId = new URL(req.url, "http://x").searchParams.get("postId");
+    if (!postId) {
+      if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+      return sendJSON(res, 200, { comments: store.getComments() });
+    }
+    return sendJSON(res, 200, { comments: store.getComments(postId) });
+  }
+
+  if (pathname === "/api/comments" && req.method === "POST") {
+    const ip = clientIp(req);
+    if (!rateCheck(msgRate, ip, 3, 10 * 60 * 1000)) {
+      log("MSG", "评论被限流 ip=" + ip);
+      return sendJSON(res, 429, { error: "评论太频繁啦，休息一下再来～" });
+    }
+    let body;
+    try { body = JSON.parse(await readBody(req, 8 * 1024)); } catch (e) { body = {}; }
+    if (body.hp) return sendJSON(res, 200, { ok: true }); // 蜜罐
+    const postId = String(body.postId || "");
+    const name = String(body.name || "匿名").replace(/[\r\n\t]+/g, " ").trim().slice(0, 20);
+    const text = String(body.text || "").trim().slice(0, 500);
+    if (!text) return sendJSON(res, 400, { error: "评论内容不能为空" });
+    const content = store.getContent();
+    const post = (content.posts || []).find(function (x) { return x.id === postId; });
+    if (!post) return sendJSON(res, 400, { error: "文章不存在" });
+    store.addComment({
+      id: "c-" + Date.now() + "-" + crypto.randomBytes(6).toString("hex"),
+      postId: postId, name: name, text: text, time: Date.now()
+    });
+    log("MSG", "新评论 ip=" + ip + " 文章=" + postId + " 昵称=" + name + " 长度=" + text.length);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  if (pathname === "/api/comments" && req.method === "DELETE") {
+    if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+    const id = new URL(req.url, "http://x").searchParams.get("id");
+    if (!id) return sendJSON(res, 400, { error: "缺少评论 id" });
+    store.deleteComment(id);
+    log("ADMIN", "评论已删除 id=" + id + " ip=" + clientIp(req));
+    return sendJSON(res, 200, { ok: true });
+  }
+
   if (pathname === "/api/logs" && req.method === "GET") {
     if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
     const n = Math.min(Math.max(parseInt(String((new URL(req.url, "http://x")).searchParams.get("lines")) || "200", 10) || 200, 1), 1000);
@@ -396,6 +600,50 @@ const server = http.createServer(async (req, res) => {
     log("REQ", req.method + " " + safeDecode(u.pathname + u.search).slice(0, 140) + " → " + res.statusCode + " " + (Date.now() - start) + "ms ip=" + ip);
   });
 
+  // robots.txt 与 sitemap.xml（动态生成）
+  if (pathname === "/robots.txt") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+    return res.end("User-agent: *\nAllow: /\n\nSitemap: https://www.xiaoxu-xiaofu.top/sitemap.xml\n");
+  }
+  if (pathname === "/sitemap.xml") {
+    try {
+      const content = store.getContent();
+      const base = "https://" + (content.site && content.site.domain ? content.site.domain : "www.xiaoxu-xiaofu.top");
+      const esc = function (s) {
+        return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      };
+      const urls = [
+        [base + "/", ""],
+        [base + "/about.html", ""],
+        [base + "/blog.html", ""],
+        [base + "/projects.html", ""],
+        [base + "/gallery.html", ""],
+        [base + "/cities.html", ""],
+        [base + "/contact.html", ""]
+      ];
+      (content.posts || []).forEach(function (p) {
+        urls.push([base + "/post.html?id=" + encodeURIComponent(p.id), String(p.date || "")]);
+      });
+      const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+        urls.map(function (u) {
+          return "  <url><loc>" + esc(u[0]) + "</loc>" + (u[1] ? "<lastmod>" + esc(u[1]) + "</lastmod>" : "") + "</url>";
+        }).join("\n") +
+        "\n</urlset>\n";
+      res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(xml);
+    } catch (e) {
+      res.writeHead(500); return res.end("sitemap error");
+    }
+  }
+
+  // 访问计数（页面与文章阅读；静态资源与后台不计入）
+  if (!isAsset) {
+    const isPostPage = pathname === "/post.html" || pathname === "/post";
+    const postId = isPostPage ? u.searchParams.get("id") : null;
+    recordView(pathname, postId, ip);
+  }
+
   if (pathname.startsWith("/api/")) {
     try { await handleAPI(req, res, pathname); }
     catch (e) {
@@ -407,10 +655,18 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res, pathname);
 });
 
+["SIGINT", "SIGTERM"].forEach(function (sig) {
+  process.on(sig, function () {
+    try { flushStats(); } catch (e) {}
+    try { store.close(); } catch (e) {}
+    process.exit(0);
+  });
+});
+
 server.listen(PORT, () => {
   log("INFO", "服务启动 端口=" + PORT + " 日志目录=" + LOG_DIR);
   console.log("==============================================");
-  console.log("  小徐小福 · 小站已启动");
+  console.log("  小xu小fu · 小站已启动");
   console.log("  前台:      http://localhost:" + PORT);
   console.log("  管理后台:  http://localhost:" + PORT + "/admin/");
   console.log("  默认密码:  " + DEFAULT_PASSWORD + "（请登录后立即修改）");

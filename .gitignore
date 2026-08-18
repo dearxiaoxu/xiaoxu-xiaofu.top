@@ -7,3 +7,4 @@ data/site.db-shm
 *.log
 .DS_Store
 data/logs/
+data/stats.json

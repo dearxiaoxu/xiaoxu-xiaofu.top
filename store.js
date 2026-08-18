@@ -142,6 +142,14 @@ function open() {
       time INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_messages_time ON messages (time);
+    CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      text TEXT NOT NULL,
+      time INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_comments_post ON comments (post_id, time);
   `);
   migrate();
   ensureCities();
@@ -302,6 +310,41 @@ function addMessage(msg) {
   }
 }
 
+// ---------- 文章级评论 ----------
+// postId 传入时返回该文章评论（旧 → 新）；不传时返回全部（新 → 旧，供后台管理）。
+function getComments(postId) {
+  if (postId) {
+    return db.prepare(
+      "SELECT id, post_id AS postId, name, text, time FROM comments WHERE post_id = ? ORDER BY time ASC, rowid ASC"
+    ).all(String(postId));
+  }
+  return db.prepare(
+    "SELECT id, post_id AS postId, name, text, time FROM comments ORDER BY time DESC, rowid DESC"
+  ).all();
+}
+
+function addComment(c) {
+  const postId = String(c.postId);
+  db.exec("BEGIN");
+  try {
+    db.prepare("INSERT INTO comments (id, post_id, name, text, time) VALUES (?, ?, ?, ?, ?)")
+      .run(String(c.id), postId, String(c.name), String(c.text), Number(c.time));
+    // 每篇文章最多保留 200 条评论（与留言板策略一致）
+    const del = db.prepare(
+      "DELETE FROM comments WHERE post_id = ? AND rowid NOT IN (SELECT rowid FROM comments WHERE post_id = ? ORDER BY time DESC, rowid DESC LIMIT 200)"
+    );
+    del.run(postId, postId);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+function deleteComment(id) {
+  db.prepare("DELETE FROM comments WHERE id = ?").run(String(id));
+}
+
 function close() {
   if (db) {
     try { db.close(); } catch (e) { /* 忽略 */ }
@@ -309,4 +352,4 @@ function close() {
   }
 }
 
-module.exports = { open, getContent, saveContent, addMessage, close };
+module.exports = { open, getContent, saveContent, addMessage, getComments, addComment, deleteComment, close };

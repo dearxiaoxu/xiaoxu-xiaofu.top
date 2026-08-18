@@ -27,6 +27,7 @@
     { key: 'trips', label: '城市与旅行', icon: '🗺️' },
     { key: 'contact', label: '联系与留言', icon: '✉️' },
     { key: 'data', label: '数据与安全', icon: '🔐' },
+    { key: 'comments', label: '评论管理', icon: '💬' },
     { key: 'logs', label: '运行日志', icon: '📋' }
   ];
 
@@ -40,6 +41,7 @@
     trips: '城市与旅行',
     contact: '联系与留言',
     data: '数据与安全',
+    comments: '评论管理',
     logs: '运行日志'
   };
 
@@ -487,7 +489,11 @@
       '</div>',
       field('SEO 描述', input('site.description', { rows: 2 })),
       field('页脚标语 tagline', input('site.tagline', { rows: 2 })),
-      field('页脚小字 footerNote', input('site.footerNote'))
+      field('页脚小字 footerNote', input('site.footerNote')),
+      field('默认分享图 shareImage', [
+        input('site.shareImage'),
+        '<label class="btn btn-sm btn-ghost" style="margin-top:8px;">🖼 上传分享图<input type="file" accept="image/*" data-upload-bind="site.shareImage" class="hidden-file"></label>'
+      ].join(''), { hint: '社交分享卡片图（og:image），建议 1200×630；留空使用默认图 /assets/og-default.png。微信/小红书分享时显示。' })
     ].join('')) +
     section('页脚 CTA', [
       '<div class="grid-2">',
@@ -974,13 +980,44 @@
   }
 
   /* --- 数据与安全 --- */
+  function loadStats() {
+    api('/api/stats').then(function (r) {
+      var box = $('stats-box');
+      if (!box) return;
+      var days = (r.days || []).map(function (d) {
+        return '<tr><td>' + esc(d.date) + '</td><td>' + d.pv + '</td><td>' + d.uv + '</td></tr>';
+      }).join('');
+      var top = (r.topPosts || []).map(function (p2, i) {
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(p2.title) + '</td><td>' + p2.views + '</td></tr>';
+      }).join('') || '<tr><td colspan="3">暂无数据</td></tr>';
+      box.innerHTML =
+        '<div class="stat-cards">' +
+        '<div class="stat-card"><b>' + r.totalPv + '</b><span>总访问 PV</span></div>' +
+        '<div class="stat-card"><b>' + (r.today ? r.today.pv : 0) + '</b><span>今日 PV</span></div>' +
+        '<div class="stat-card"><b>' + (r.today ? r.today.uv : 0) + '</b><span>今日 UV</span></div>' +
+        '</div>' +
+        '<h4 style="margin:16px 0 8px;">近 7 天</h4>' +
+        '<table class="mini-table"><thead><tr><th>日期</th><th>PV</th><th>UV</th></tr></thead><tbody>' + days + '</tbody></table>' +
+        '<h4 style="margin:16px 0 8px;">热帖 TOP5</h4>' +
+        '<table class="mini-table"><thead><tr><th>#</th><th>文章</th><th>阅读</th></tr></thead><tbody>' + top + '</tbody></table>';
+    }).catch(function (err) {
+      if (err.status !== 401) toast('统计加载失败：' + (err.message || ''), 'err');
+    });
+  }
+
   function renderData() {
+    setTimeout(loadStats, 0);
     return section('数据导出 / 导入', [
       '<p class="f-hint">导出当前数据库为 db.json 文件，或从本地导入一份 db.json 覆盖当前内容。</p>',
       '<div class="data-actions">',
       '<button class="btn" data-action="export">⬇ 导出数据（db.json）</button>',
       '<label class="btn btn-ghost">⬆ 导入数据<input type="file" accept=".json,application/json" class="hidden-file" data-action="import"></label>',
       '</div>'
+    ].join('')) +
+    section('访问统计', [
+      '<p class="f-hint">PV = 页面访问次数；UV = 独立访客（按 IP 去重）。数据保存在服务器 data/stats.json，每 60 秒落盘一次。前台无任何统计痕迹。</p>',
+      '<div id="stats-box">加载中…</div>',
+      '<div class="log-toolbar"><button class="btn" data-action="refresh-stats">🔄 刷新统计</button></div>'
     ].join('')) +
     section('修改密码', [
       '<p class="f-hint">修改后，旧 token 会失效，需要重新登录。</p>',
@@ -1011,6 +1048,42 @@
     ].join(''));
   }
 
+  var adminComments = [];
+  function loadCommentsAdmin() {
+    api('/api/comments').then(function (r) {
+      adminComments = r.comments || [];
+      var box = $('comments-box');
+      if (!box) return;
+      if (!adminComments.length) { box.innerHTML = '<div class="empty">暂无评论</div>'; return; }
+      box.innerHTML = adminComments.map(function (c) {
+        var d = new Date(c.time || Date.now());
+        var ts = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        return '<div class="admin-comment-row">' +
+          '<div class="ac-main"><p class="ac-text">' + esc(c.text) + '</p>' +
+          '<p class="f-hint">' + esc(c.name || '匿名') + ' · ' + ts + ' · 文章 ' + esc(c.postId) + '</p></div>' +
+          '<button class="btn btn-sm btn-ghost" data-action="del-comment" data-id="' + esc(c.id) + '">删除</button>' +
+          '</div>';
+      }).join('');
+    }).catch(function (err) {
+      if (err.status !== 401) toast('评论加载失败：' + (err.message || ''), 'err');
+    });
+  }
+
+  function renderComments() {
+    setTimeout(loadCommentsAdmin, 0);
+    return section('文章评论管理', [
+      '<p class="f-hint">访客在文章页发表的评论都在这里，删除立即生效。</p>',
+      '<div id="comments-box">加载中…</div>'
+    ].join(''));
+  }
+
+  function delComment(id) {
+    if (!confirm('确定删除这条评论吗？')) return;
+    api('/api/comments?id=' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(function () { toast('已删除', 'ok'); loadCommentsAdmin(); })
+      .catch(function (err) { if (err.status !== 401) toast('删除失败：' + (err.message || ''), 'err'); });
+  }
+
   var renderers = {
     site: renderSite,
     hero: renderHero,
@@ -1021,6 +1094,7 @@
     trips: renderTrips,
     contact: renderContact,
     data: renderData,
+    comments: renderComments,
     logs: renderLogs
   };
 
@@ -1517,6 +1591,12 @@
         break;
       case 'refresh-logs':
         loadLogs();
+        break;
+      case 'refresh-stats':
+        loadStats();
+        break;
+      case 'del-comment':
+        delComment(el.dataset.id);
         break;
       /* import 走 change 事件，不在此处理 */
     }

@@ -344,6 +344,151 @@
     });
   }
 
+  /* ---------- Q1 页面转场（View Transitions，渐进增强） ---------- */
+  function shouldTransition(e, link) {
+    if (e.defaultPrevented || e.button !== 0) return false;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return false;
+    var href = link.getAttribute("href");
+    if (!href || href.charAt(0) === "#") return false;
+    if (link.hasAttribute("download")) return false;
+    if (link.target && link.target !== "_self") return false;
+    if (link.closest(".stat-link")) return false;
+    if (link.pathname && link.pathname.indexOf("/admin") === 0) return false;
+    try {
+      if (link.origin && link.origin !== location.origin) return false;
+    } catch (err) { return false; }
+    return true;
+  }
+  document.addEventListener("click", function (e) {
+    var link = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (!link || !shouldTransition(e, link)) return;
+    e.preventDefault();
+    var url = link.href;
+    if (document.startViewTransition && !reducedMotion) {
+      document.startViewTransition(function () { location.href = url; });
+    } else {
+      location.href = url;
+    }
+  });
+
+  /* ---------- Q2 自定义光标系统 ---------- */
+  var cursorDot = null, cursorRing = null;
+  var cursorX = 0, cursorY = 0, ringX = 0, ringY = 0;
+  function initCursor() {
+    if (!finePointer || reducedMotion) return;
+    if (cursorDot) return;
+    cursorDot = document.createElement("div");
+    cursorDot.className = "cursor-dot";
+    cursorRing = document.createElement("div");
+    cursorRing.className = "cursor-ring";
+    var label = document.createElement("span");
+    label.className = "cursor-ring-label";
+    label.textContent = "OPEN \u2197";
+    cursorRing.appendChild(label);
+    document.body.appendChild(cursorDot);
+    document.body.appendChild(cursorRing);
+    root.classList.add("custom-cursor");
+
+    document.addEventListener("mousemove", function (e) {
+      cursorX = e.clientX;
+      cursorY = e.clientY;
+      if (cursorDot) {
+        cursorDot.style.transform = "translate(" + cursorX + "px," + cursorY + "px)";
+        cursorDot.classList.add("visible");
+      }
+      if (cursorRing) {
+        var t = e.target && e.target.closest ? e.target.closest("a, button, .card, .gallery-item, .tilt, .magnetic, .stat-link") : null;
+        cursorRing.classList.toggle("hover", !!t);
+        cursorRing.classList.add("visible");
+      }
+    }, { passive: true });
+
+    document.documentElement.addEventListener("mouseleave", function () {
+      if (cursorDot) cursorDot.classList.remove("visible");
+      if (cursorRing) cursorRing.classList.remove("visible");
+    });
+    window.addEventListener("touchstart", function () {
+      if (cursorDot) cursorDot.classList.remove("visible");
+      if (cursorRing) cursorRing.classList.remove("visible");
+    }, { passive: true });
+
+    function loop() {
+      ringX += (cursorX - ringX) * 0.18;
+      ringY += (cursorY - ringY) * 0.18;
+      if (cursorRing) cursorRing.style.transform = "translate(" + ringX + "px," + ringY + "px)";
+      requestAnimationFrame(loop);
+    }
+    loop();
+  }
+  initCursor();
+
+  /* ---------- Q3 顶部滚动进度条 ---------- */
+  var scrollBar = document.createElement("div");
+  scrollBar.className = "scroll-progress";
+  document.body.appendChild(scrollBar);
+  var scrollTicking = false;
+  function updateScrollProgress() {
+    scrollTicking = false;
+    var scroller = document.scrollingElement || document.documentElement;
+    var max = scroller.scrollHeight - scroller.clientHeight;
+    var top = scroller.scrollTop || 0;
+    var p = max > 0 ? top / max : 0;
+    if (p < 0) p = 0;
+    if (p > 1) p = 1;
+    scrollBar.style.transform = "scaleX(" + p + ")";
+  }
+  function requestScrollProgress() {
+    if (scrollTicking) return;
+    scrollTicking = true;
+    requestAnimationFrame(updateScrollProgress);
+  }
+  window.addEventListener("scroll", requestScrollProgress, { passive: true });
+  window.addEventListener("resize", requestScrollProgress, { passive: true });
+  updateScrollProgress();
+
+  /* ---------- Q4 Hero 入场动画序列 ---------- */
+  function initHeroSeq() {
+    var col = document.querySelector(".hero-inner > div:first-child");
+    if (!col || col.getAttribute("data-seq-done")) return;
+    col.setAttribute("data-seq-done", "1");
+    var kids = Array.prototype.slice.call(col.children);
+    kids.forEach(function (el, i) {
+      el.classList.add("h-seq");
+      el.style.setProperty("--d", (i * 0.1) + "s");
+    });
+  }
+
+  /* ---------- Q5 终端状态块 ---------- */
+  function togetherDays() {
+    var DAY_MS = 86400000;
+    var parts = (document.body.getAttribute("data-together-date") || "").split("-").map(Number);
+    var START_MS = (parts.length === 3 && parts[0] && parts[1] && parts[2])
+      ? new Date(parts[0], parts[1] - 1, parts[2]).getTime()
+      : new Date(2024, 10, 29).getTime();
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return Math.max(1, Math.round((today - START_MS) / DAY_MS) + 1);
+  }
+  function initTerminal() {
+    var col = document.querySelector(".hero-inner > div:first-child");
+    if (!col || col.querySelector(".term-chip")) return;
+    var chip = document.createElement("div");
+    chip.className = "term-chip";
+    chip.innerHTML = '<span class="term-prompt">&gt;</span>' +
+      '<span class="term-line">uptime: <b data-uptime>…</b> · visitors: <b class="term-visitors">…</b></span>' +
+      '<span class="term-cursor">▌</span>';
+    col.appendChild(chip);
+    var uptimeEl = chip.querySelector("[data-uptime]");
+    if (uptimeEl) uptimeEl.textContent = togetherDays() + "d";
+    var visitorsEl = chip.querySelector(".term-visitors");
+    fetch("/api/counter")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        if (visitorsEl) visitorsEl.textContent = (data && typeof data.pv === "number") ? String(data.pv) : "—";
+      })
+      .catch(function () { if (visitorsEl) visitorsEl.textContent = "—"; });
+  }
+
   /* ---------- 对外钩子：动态内容渲染后调用 ---------- */
   window.XXF = {
     refresh: function () {
@@ -352,6 +497,8 @@
       initCounters();
       initTogether();
       initGalleryMulti();
+      initTerminal();
+      initHeroSeq();
     }
   };
   window.XXF.refresh();

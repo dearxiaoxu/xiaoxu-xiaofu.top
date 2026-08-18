@@ -13,7 +13,8 @@
       "text": "欢迎随时给我们留言，或者只是来打个招呼 👋",
       "button": "去联系页坐坐",
       "link": "contact.html"
-    }
+    },
+    "shareImage": "/assets/og-default.png"
   },
   "hero": {
     "greeting": "欢迎来到我们的小站，很高兴遇见你",

@@ -1648,3 +1648,161 @@ ul, ol { list-style: none; }
   }
   .trip-page.drawer-open .trip-backdrop { display: block; }
 }
+
+/* ---------- 技术感 QW（整改 P0-⑤） ---------- */
+
+/* Q1 页面转场（View Transitions，渐进增强） */
+::view-transition-old(root) {
+  animation: qw-vt-out 0.18s ease-out both;
+}
+::view-transition-new(root) {
+  animation: qw-vt-in 0.25s ease both;
+}
+@keyframes qw-vt-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-14px); }
+}
+@keyframes qw-vt-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Q2 自定义光标系统 */
+html.custom-cursor,
+html.custom-cursor * { cursor: none !important; }
+
+.cursor-dot,
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+  transform: translate(-100px, -100px);
+}
+.cursor-dot {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  z-index: 9999;
+  transition: opacity 0.15s ease;
+}
+.cursor-ring {
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  z-index: 9998;
+  display: grid;
+  place-items: center;
+  scale: 1;
+  transition: scale 0.22s ease, opacity 0.2s ease;
+}
+.cursor-dot.visible,
+.cursor-ring.visible { opacity: 1; }
+.cursor-ring.hover { scale: 1.5; }
+
+.cursor-ring-label {
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+.cursor-ring.hover .cursor-ring-label { opacity: 1; }
+
+/* Q3 顶部滚动进度条 */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+  transform-origin: left;
+  transform: scaleX(0);
+  z-index: 9997;
+  pointer-events: none;
+}
+
+/* Q4 Hero 入场动画序列 */
+.h-seq {
+  animation: hSeq 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@keyframes hSeq {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Q5 终端状态块 */
+.term-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 26px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+.term-prompt { color: var(--accent); font-weight: 700; }
+.term-line b { color: var(--accent); font-weight: 700; }
+.term-visitors { font-variant-numeric: tabular-nums; }
+.term-cursor {
+  color: var(--accent);
+  animation: cursor-blink 1s steps(2) infinite;
+}
+
+/* 技术感 QW：减弱动态偏好（禁用 hSeq / 光标相关动画与过渡） */
+@media (prefers-reduced-motion: reduce) {
+  .h-seq {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .cursor-dot,
+  .cursor-ring { animation: none !important; transition: none !important; }
+  .cursor-ring-label { transition: none !important; }
+  .term-cursor { animation: none !important; }
+}
+
+/* ---------- 文章评论（整改 P0-①） ---------- */
+.article-comments {
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.article-comments h2 {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+}
+
+.comment-item { padding: 16px 20px; margin-bottom: 12px; }
+
+.comment-item p { color: var(--ink-2); font-size: 0.93rem; white-space: pre-wrap; word-break: break-word; }
+
+.comment-form {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+
+.comment-form .btn { margin-top: 4px; }
