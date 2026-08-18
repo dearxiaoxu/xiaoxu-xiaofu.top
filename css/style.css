@@ -1273,3 +1273,113 @@ ul, ol { list-style: none; }
   }
   .reveal { opacity: 1; transform: none; }
 }
+
+/* ---------- 首页统计卡片（可点击跳转） ---------- */
+.hero-stats .stat-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.hero-stats .stat-link:hover b { color: var(--accent-deep); }
+.hero-stats .stat-link.stat-go b { animation: stat-pop 0.32s ease; }
+@keyframes stat-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); color: var(--gold); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- 多图相册动效 ---------- */
+.gallery-item.gallery-multi img { transition: opacity 0.8s ease; }
+.gallery-item .photo-count {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(23, 20, 16, 0.55);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* ---------- 城市地图 ---------- */
+.city-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+.city-map-card { padding: 18px; }
+.city-map-head {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.legend-dot.visited { background: var(--accent); box-shadow: var(--glow); }
+
+.city-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 68%),
+    var(--bg-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.city-map-inner { position: absolute; inset: 0; }
+.city-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: none;
+  background: var(--ink-3);
+  cursor: default;
+}
+.city-dot.visited {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--glow);
+  animation: city-pulse 2.2s ease-in-out infinite;
+}
+.city-dot.visited:hover { transform: translate(-50%, -50%) scale(1.35); }
+@keyframes city-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent), var(--glow); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent), var(--glow); }
+}
+
+.city-memory-panel { padding: 22px; min-height: 200px; }
+.city-memory-empty { text-align: center; color: var(--ink-3); padding: 22px 0; }
+.city-memory-empty b { color: var(--ink); font-family: var(--font-serif); font-size: 1.05rem; }
+.city-memory-panel h3 { font-family: var(--font-serif); font-size: 1.35rem; }
+.city-memory-text { color: var(--ink-2); margin-top: 10px; white-space: pre-wrap; }
+
+@media (max-width: 860px) {
+  .city-map-layout { grid-template-columns: 1fr; }
+}

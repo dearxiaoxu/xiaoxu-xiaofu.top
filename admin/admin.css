@@ -591,3 +591,36 @@ input, textarea, select { font-family: inherit; font-size: 0.95rem; color: var(-
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ---------- 相册多图 ---------- */
+.g-thumb { position: relative; }
+.g-count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(23, 20, 16, 0.55);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.photo-editor-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.photo-editor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

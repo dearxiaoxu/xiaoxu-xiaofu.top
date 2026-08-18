@@ -24,6 +24,7 @@
     { key: 'posts', label: '文章管理', icon: '📝' },
     { key: 'projects', label: '项目管理', icon: '🛠️' },
     { key: 'gallery', label: '相册管理', icon: '🖼️' },
+    { key: 'cities', label: '城市记忆', icon: '🗺️' },
     { key: 'contact', label: '联系与留言', icon: '✉️' },
     { key: 'data', label: '数据与安全', icon: '🔐' },
     { key: 'logs', label: '运行日志', icon: '📋' }
@@ -36,6 +37,7 @@
     posts: '文章管理',
     projects: '项目管理',
     gallery: '相册管理',
+    cities: '城市记忆',
     contact: '联系与留言',
     data: '数据与安全',
     logs: '运行日志'
@@ -579,10 +581,15 @@
     if (!arr.length) return head + emptyNote('相册还是空的，点击「＋ 新增」');
     var cards = arr.map(function (g) {
       var media;
-      if (g.type === 'image' && g.src) {
-        media = '<div class="g-thumb"><img src="' + esc(g.src) + '" alt=""></div>';
-      } else if (g.type === 'image') {
-        media = '<div class="g-thumb g-thumb-empty">🖼️</div>';
+      if (g.type === 'image') {
+        var first = (Array.isArray(g.photos) && g.photos[0] && g.photos[0].src) || g.src || '';
+        var count = (Array.isArray(g.photos) && g.photos.length) ? g.photos.length : (g.src ? 1 : 0);
+        if (first) {
+          media = '<div class="g-thumb"><img src="' + esc(first) + '" alt="">' +
+            (count > 1 ? '<span class="g-count">' + count + '</span>' : '') + '</div>';
+        } else {
+          media = '<div class="g-thumb g-thumb-empty">🖼️</div>';
+        }
       } else {
         media = '<div class="g-thumb ' + esc(g.tile || 'tile-1') + '">' + esc(g.emoji || '') + '</div>';
       }
@@ -614,14 +621,28 @@
       field('emoji', input(base + '.emoji')) +
       '</div>';
 
+    if (isImage && !Array.isArray(g.photos)) {
+      g.photos = g.src ? [{ src: g.src, caption: g.caption || '' }] : [{ src: '', caption: '' }];
+    }
+
     var imageBlock = '';
     if (isImage) {
-      imageBlock = field('图片 URL', input(base + '.src')) +
-        section('上传图片', [
-          '<input type="file" accept="image/*" data-upload-bind="' + base + '.src" class="upload-input">',
-          g.src ? '<div class="upload-preview"><img src="' + esc(g.src) + '" alt=""></div>' : '',
-          '<p class="f-hint">选择图片后自动上传，返回的 URL 会自动填入「图片 URL」字段</p>'
-        ].join(''));
+      var photos = g.photos || [{ src: '', caption: '' }];
+      var photoRows = photos.map(function (p, j) {
+        return '<div class="photo-editor-row">' +
+          '<div class="grid-2">' +
+          field('图片 URL', input(base + '.photos.' + j + '.src')) +
+          field('说明', input(base + '.photos.' + j + '.caption')) +
+          '</div>' +
+          '<div class="photo-editor-actions">' +
+          '<label class="btn btn-sm btn-ghost">上传<input type="file" accept="image/*" data-upload-bind="' + base + '.photos.' + j + '.src" class="hidden-file"></label>' +
+          '<button class="btn btn-sm btn-ghost" data-action="remove-photo" data-base="' + base + '" data-index="' + j + '">删除</button>' +
+          '</div>' +
+          (p.src ? '<div class="upload-preview"><img src="' + esc(p.src) + '" alt=""></div>' : '') +
+          '</div>';
+      }).join('');
+      imageBlock = section('照片（同一事件可传多张）', photoRows +
+        '<button class="btn btn-sm" data-action="add-photo" data-base="' + base + '">＋ 添加照片</button>');
     }
 
     return '<div class="editor-head">' +
@@ -633,6 +654,28 @@
         imageBlock,
         field('说明 caption', input(base + '.caption'))
       ].join(''));
+  }
+
+  /* --- 城市记忆 --- */
+  function renderCities() {
+    var arr = state.db.cities || [];
+    var head = '<div class="list-toolbar"><p class="muted">共 ' + arr.length + ' 座城市</p>' +
+      '<button class="btn" data-action="add" data-list="cities">＋ 添加城市</button></div>';
+    if (!arr.length) return head + emptyNote('还没有城市数据');
+    var cards = arr.map(function (c, i) {
+      var name = c.name || ('城市 ' + (i + 1));
+      return '<div class="list-card"><div class="list-card-head"><span class="mono-tag">' + esc(name) + '</span>' +
+        '<button class="icon-btn" data-action="remove" data-list="cities" data-index="' + i + '" title="删除">✕</button></div>' +
+        '<div class="grid-2">' +
+        field('城市名', input('cities.' + i + '.name')) +
+        field('是否走过', checkToggle('cities.' + i + '.visited')) +
+        field('纬度 lat', input('cities.' + i + '.lat', { dataType: 'number' })) +
+        field('经度 lng', input('cities.' + i + '.lng', { dataType: 'number' })) +
+        '</div>' +
+        field('关于这座城市的记忆', input('cities.' + i + '.memory', { rows: 3 })) +
+        '</div>';
+    }).join('');
+    return head + '<div class="rows">' + cards + '</div>';
   }
 
   /* --- 联系与留言 --- */
@@ -731,6 +774,7 @@
     posts: renderPosts,
     projects: renderProjects,
     gallery: renderGallery,
+    cities: renderCities,
     contact: renderContact,
     data: renderData,
     logs: renderLogs
@@ -823,7 +867,8 @@
     'about.profiles': { name: '', role: '', bio: '', skills: [] },
     'about.story.timeline': { time: '', title: '', text: '' },
     'about.hobbies': { emoji: '', title: '', text: '' },
-    'contact.cards': { icon: '', title: '', text: '', link: '', note: '' }
+    'contact.cards': { icon: '', title: '', text: '', link: '', note: '' },
+    'cities': { id: '', name: '', lat: 0, lng: 0, visited: false, memory: '' }
   };
 
   function addItem(list) {
@@ -901,6 +946,25 @@
     state.dirty = true;
     updateDirty();
     renderTab('gallery');
+  }
+
+  function addPhoto(base) {
+    var arr = getPath(state.db, base + '.photos');
+    if (!Array.isArray(arr)) return;
+    arr.push({ src: '', caption: '' });
+    state.dirty = true;
+    updateDirty();
+    renderTab(state.activeTab);
+  }
+
+  function removePhoto(base, index) {
+    var arr = getPath(state.db, base + '.photos');
+    if (!Array.isArray(arr) || index < 0 || index >= arr.length) return;
+    arr.splice(index, 1);
+    if (!arr.length) arr.push({ src: '', caption: '' });
+    state.dirty = true;
+    updateDirty();
+    renderTab(state.activeTab);
   }
 
   /* ============================================================
@@ -999,6 +1063,7 @@
       Array.isArray(o.posts) &&
       Array.isArray(o.projects) &&
       Array.isArray(o.gallery) &&
+      Array.isArray(o.cities) &&
       typeof o.contact === 'object' &&
       Array.isArray(o.messages);
   }
@@ -1098,6 +1163,12 @@
         break;
       case 'del-gallery':
         delGallery(el.dataset.id);
+        break;
+      case 'add-photo':
+        addPhoto(el.dataset.base);
+        break;
+      case 'remove-photo':
+        removePhoto(el.dataset.base, Number(el.dataset.index));
         break;
       case 'back-list':
         state.editor = null;

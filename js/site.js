@@ -46,10 +46,27 @@
   /* ---------- 公共片段 ---------- */
   function galleryItemHTML(g, extra) {
     extra = extra || "";
-    if (g.type === "image" && g.src) {
-      return '<figure class="gallery-item reveal ' + extra + '" data-src="' + esc(g.src) + '" data-caption="' + esc(g.caption) + '">' +
-        '<img src="' + esc(g.src) + '" alt="' + esc(g.caption) + '" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
-        '<figcaption>' + esc(g.caption) + '</figcaption></figure>';
+    if (g.type === "image") {
+      var photos = [];
+      if (Array.isArray(g.photos) && g.photos.length) {
+        photos = g.photos.filter(function (p) { return p && p.src; });
+      } else if (g.src) {
+        photos = [{ src: g.src, caption: g.caption || "" }];
+      }
+      if (photos.length > 1) {
+        var imgs = photos.map(function (p, i) {
+          return '<img src="' + esc(p.src) + '" alt="' + esc(p.caption || g.caption || "") + '" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' + (i === 0 ? 'opacity:1' : 'opacity:0') + '">';
+        }).join("");
+        return '<figure class="gallery-item gallery-multi reveal ' + extra + '" data-src="' + esc(photos[0].src) + '" data-caption="' + esc(g.caption || "") + '">' +
+          imgs + '<span class="photo-count">' + photos.length + '</span>' +
+          '<figcaption>' + esc(g.caption || "") + '</figcaption></figure>';
+      }
+      if (photos.length === 1) {
+        return '<figure class="gallery-item reveal ' + extra + '" data-src="' + esc(photos[0].src) + '" data-caption="' + esc(g.caption || "") + '">' +
+          '<img src="' + esc(photos[0].src) + '" alt="' + esc(g.caption || "") + '" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">' +
+          '<figcaption>' + esc(g.caption || "") + '</figcaption></figure>';
+      }
+      return '<figure class="gallery-item reveal ' + extra + '"><span class="tile tile-1">🖼️</span><figcaption>' + esc(g.caption || "") + '</figcaption></figure>';
     }
     return '<figure class="gallery-item reveal ' + extra + '" data-tile="' + esc(g.tile || "tile-1") + '" data-emoji="' + esc(g.emoji || "📷") + '" data-caption="' + esc(g.caption) + '">' +
       '<span class="tile ' + esc(g.tile || "tile-1") + '">' + esc(g.emoji || "📷") + '</span>' +
@@ -111,12 +128,29 @@
   }
 
   /* ---------- 各页面渲染 ---------- */
+  function countPhotos(gallery) {
+    return (gallery || []).reduce(function (n, g) {
+      if (g.type !== "image") return n;
+      if (Array.isArray(g.photos) && g.photos.length) return n + g.photos.filter(function (p) { return p && p.src; }).length;
+      if (g.src) return n + 1;
+      return n;
+    }, 0);
+  }
+
   function renderIndex() {
     var h = DB.hero || {}, s = DB.site || {};
+    var visitedCities = (DB.cities || []).filter(function (c) { return c.visited; }).length;
+    var totalPhotos = countPhotos(DB.gallery || []);
 
     var statsHTML = (h.stats || []).map(function (st) {
       if (st.kind === "together") {
         return '<div class="stat" title="在一起的日子从 ' + esc(s.togetherDate || "") + ' 起"><b data-together>0</b><span>' + esc(st.label || "") + '</span></div>';
+      }
+      if (st.kind === "cities") {
+        return '<a class="stat stat-link" href="cities.html"><b data-count="' + visitedCities + '">' + visitedCities + '</b><span>' + esc(st.label || "") + '</span></a>';
+      }
+      if (st.kind === "photos") {
+        return '<a class="stat stat-link" href="gallery.html"><b data-count="' + totalPhotos + '" data-suffix="' + esc(st.suffix || "") + '">' + totalPhotos + esc(st.suffix || "") + '</b><span>' + esc(st.label || "") + '</span></a>';
       }
       if (st.kind === "count") {
         return '<div class="stat"><b data-count="' + esc(st.value || 0) + '" data-suffix="' + esc(st.suffix || "") + '">' + esc(st.value) + esc(st.suffix || "") + '</b><span>' + esc(st.label || "") + '</span></div>';
@@ -226,6 +260,41 @@
       '<div class="card" style="padding:26px 28px;text-align:center;color:var(--ink-2);">相册还空着，去后台添加照片吧～</div>';
   }
 
+  function renderCities() {
+    var cities = (DB.cities || []).filter(function (c) { return typeof c.lat === "number" && typeof c.lng === "number"; });
+    var map = $("city-map");
+    var panel = $("city-memory");
+    if (!map) return;
+
+    var visitedCount = cities.filter(function (c) { return c.visited; }).length;
+
+    var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    cities.forEach(function (c) {
+      if (c.lat < minLat) minLat = c.lat;
+      if (c.lat > maxLat) maxLat = c.lat;
+      if (c.lng < minLng) minLng = c.lng;
+      if (c.lng > maxLng) maxLng = c.lng;
+    });
+    if (!isFinite(minLat)) {
+      map.innerHTML = '<p class="muted" style="text-align:center;padding:40px;">还没有城市数据，去后台添加吧～</p>';
+      return;
+    }
+    var padLat = (maxLat - minLat) * 0.08 || 1;
+    var padLng = (maxLng - minLng) * 0.06 || 1;
+    minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
+
+    var dots = cities.map(function (c) {
+      var x = ((c.lng - minLng) / (maxLng - minLng)) * 100;
+      var y = ((maxLat - c.lat) / (maxLat - minLat)) * 100;
+      return '<button class="city-dot' + (c.visited ? " visited" : "") + '" style="left:' + x.toFixed(3) + '%;top:' + y.toFixed(3) + '%" data-name="' + esc(c.name) + '" data-memory="' + esc(c.memory || "") + '" data-visited="' + (c.visited ? "1" : "0") + '" title="' + esc(c.name) + '" aria-label="' + esc(c.name) + '"></button>';
+    }).join("");
+
+    map.innerHTML = '<div class="city-map-inner">' + dots + '</div>';
+    if (panel) {
+      panel.innerHTML = '<div class="city-memory-empty"><b>👣 一起走过 ' + visitedCount + ' 座城市</b><p>点击点亮的城市，看看我们留在那里的记忆。</p></div>';
+    }
+  }
+
   function renderMessages() {
     var box = $("messages");
     if (!box) return;
@@ -304,6 +373,7 @@
     else if (PAGE === "projects") renderProjects();
     else if (PAGE === "gallery") renderGallery();
     else if (PAGE === "contact") renderContact();
+    else if (PAGE === "cities") renderCities();
 
     var pageTitle;
     if (PAGE === "index") {
@@ -317,6 +387,7 @@
       else if (PAGE === "projects") base = "项目作品";
       else if (PAGE === "gallery") base = "生活瞬间";
       else if (PAGE === "contact") base = (DB.contact.title || "联系我们");
+      else if (PAGE === "cities") base = "走过的城市";
       pageTitle = base + " · " + (DB.site.name || "");
     }
     document.title = pageTitle;

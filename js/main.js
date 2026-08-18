@@ -8,10 +8,11 @@
   var finePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---------- 主题切换（localStorage 记忆） ---------- */
+  /* ---------- 主题切换（默认跟随系统，手动选择后 localStorage 记忆） ---------- */
   var themeKey = "xxf-theme";
   var root = document.documentElement;
   var toggle = document.querySelector(".theme-toggle");
+  var sysMedia = window.matchMedia("(prefers-color-scheme: dark)");
 
   function applyTheme(theme) {
     root.setAttribute("data-theme", theme);
@@ -20,10 +21,25 @@
       toggle.setAttribute("aria-label", theme === "dark" ? "切换到亮色模式" : "切换到暗色模式");
     }
   }
+  function savedTheme() {
+    try { return localStorage.getItem(themeKey); } catch (e) { return null; }
+  }
+  function systemTheme() {
+    return sysMedia.matches ? "dark" : "light";
+  }
 
-  var saved = null;
-  try { saved = localStorage.getItem(themeKey); } catch (e) { /* 忽略 */ }
-  applyTheme(saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  // 初始：有手动记忆就用记忆，否则跟随系统
+  applyTheme(savedTheme() || systemTheme());
+
+  // 系统深浅色变化时实时跟随（用户手动选过之后则尊重用户选择，不覆盖）
+  function onSystemThemeChange() {
+    if (!savedTheme()) applyTheme(systemTheme());
+  }
+  if (sysMedia.addEventListener) {
+    sysMedia.addEventListener("change", onSystemThemeChange);
+  } else if (sysMedia.addListener) {
+    sysMedia.addListener(onSystemThemeChange);
+  }
 
   if (toggle) {
     toggle.addEventListener("click", function () {
@@ -297,6 +313,60 @@
   var yearEl = document.querySelector("[data-year]");
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 
+  /* ---------- 多图相册动效（同一事件多张照片轮播淡入） ---------- */
+  function initGalleryMulti() {
+    document.querySelectorAll(".gallery-multi:not([data-multi-done])").forEach(function (fig) {
+      fig.setAttribute("data-multi-done", "1");
+      var imgs = Array.prototype.slice.call(fig.querySelectorAll("img"));
+      if (imgs.length < 2) return;
+      var i = 0;
+      function next() {
+        imgs.forEach(function (img, idx) {
+          img.style.opacity = idx === i ? "1" : "0";
+        });
+        i = (i + 1) % imgs.length;
+      }
+      setInterval(next, 2600);
+    });
+  }
+
+  /* ---------- 城市地图：点击点亮城市查看记忆 ---------- */
+  function initCityDots() {
+    var map = document.querySelector("#city-map");
+    var panel = document.getElementById("city-memory");
+    if (!map || map.getAttribute("data-city-done")) return;
+    map.setAttribute("data-city-done", "1");
+    map.addEventListener("click", function (e) {
+      var dot = e.target.closest(".city-dot");
+      if (!dot || !panel) return;
+      var name = dot.getAttribute("data-name") || "";
+      var memory = dot.getAttribute("data-memory") || "";
+      var visited = dot.getAttribute("data-visited") === "1";
+      if (!visited) {
+        panel.innerHTML = '<div class="city-memory-empty"><b></b><p>这里还没留下脚印，期待下一次出发。</p></div>';
+        panel.querySelector("b").textContent = name;
+        return;
+      }
+      panel.innerHTML = '<h3></h3><p class="city-memory-text"></p>';
+      panel.querySelector("h3").textContent = name;
+      panel.querySelector(".city-memory-text").textContent = memory || "关于这座城市的记忆还在路上……";
+    });
+  }
+
+  /* ---------- 首页统计卡片：点击有个小动效后再跳转 ---------- */
+  function initStatLinks() {
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest(".stat-link");
+      if (!link) return;
+      var href = link.getAttribute("href");
+      if (!href || link.getAttribute("data-going")) return;
+      e.preventDefault();
+      link.setAttribute("data-going", "1");
+      link.classList.add("stat-go");
+      setTimeout(function () { window.location.href = href; }, 320);
+    });
+  }
+
   /* ---------- 对外钩子：动态内容渲染后调用 ---------- */
   window.XXF = {
     refresh: function () {
@@ -304,7 +374,10 @@
       initTyped();
       initCounters();
       initTogether();
+      initGalleryMulti();
+      initCityDots();
     }
   };
   window.XXF.refresh();
+  initStatLinks();
 })();

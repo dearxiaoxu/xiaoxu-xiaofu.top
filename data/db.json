@@ -47,15 +47,11 @@
         "label": "天 · 在一起"
       },
       {
-        "kind": "count",
-        "value": 12,
-        "suffix": "",
+        "kind": "cities",
         "label": "座 · 一起走过的城市"
       },
       {
-        "kind": "count",
-        "value": 800,
-        "suffix": "+",
+        "kind": "photos",
         "label": "张 · 照片与回忆"
       },
       {
