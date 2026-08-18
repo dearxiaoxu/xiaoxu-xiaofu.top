@@ -305,14 +305,21 @@
     else if (PAGE === "gallery") renderGallery();
     else if (PAGE === "contact") renderContact();
 
-    document.title = (PAGE === "index" ? (DB.site.name || "") + " · " + (DB.site.title || "")
-      : (PAGE === "about" ? (DB.about.title || "关于我们")
-        : PAGE === "blog" ? "博客"
-          : PAGE === "projects" ? "项目作品"
-            : PAGE === "gallery" ? "生活瞬间"
-              : PAGE === "contact" ? (DB.contact.title || "联系我们")
-                : PAGE === "post" ? document.title.replace(/ · .*$/, "")
-                  : "首页") + " · " + (DB.site.name || ""));
+    var pageTitle;
+    if (PAGE === "index") {
+      pageTitle = (DB.site.name || "") + " · " + (DB.site.title || "");
+    } else if (PAGE === "post") {
+      pageTitle = document.title; // renderPost 已设置“文章标题 · 站点名”
+    } else {
+      var base = "首页";
+      if (PAGE === "about") base = (DB.about.title || "关于我们");
+      else if (PAGE === "blog") base = "博客";
+      else if (PAGE === "projects") base = "项目作品";
+      else if (PAGE === "gallery") base = "生活瞬间";
+      else if (PAGE === "contact") base = (DB.contact.title || "联系我们");
+      pageTitle = base + " · " + (DB.site.name || "");
+    }
+    document.title = pageTitle;
 
     if (window.XXF && XXF.refresh) XXF.refresh();
   }
