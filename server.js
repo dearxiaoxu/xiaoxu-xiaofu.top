@@ -18,6 +18,7 @@ const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const LOG_DIR = path.join(DATA_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "site.log");
 const BOUNDARY_DIR = path.join(ROOT, "assets", "boundaries");
+const CHINA_MAP_FILE = path.join(ROOT, "assets", "china-provinces.json");
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
@@ -235,7 +236,7 @@ function serveStatic(req, res, pathname) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    const cacheControl = filePath.startsWith(BOUNDARY_DIR + path.sep)
+    const cacheControl = filePath.startsWith(BOUNDARY_DIR + path.sep) || filePath === CHINA_MAP_FILE
       ? "public, max-age=31536000, immutable"
       : (ext === ".html" || ext === ".js" || ext === ".css" || ext === ".svg" || ext === ".json") ? "no-store" : "public, max-age=86400";
     res.writeHead(200, {

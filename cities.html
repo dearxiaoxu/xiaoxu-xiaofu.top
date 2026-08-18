@@ -3,51 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#FA8952">
-  <meta name="theme-color" content="#171410" media="(prefers-color-scheme: dark)">
-  <title>走过的城市 · xiaoxu & xiaofu</title>
-  <meta name="description" content="xiaoxu 与 xiaofu 一起走过的城市地图，点亮每一座留下记忆的城市。">
-  <meta property="og:title" content="走过的城市 · xiaoxu & xiaofu">
-  <meta property="og:description" content="xiaoxu 与 xiaofu 一起走过的城市地图，点亮每一座留下记忆的城市。">
+  <meta name="theme-color" content="#F5F7FA">
+  <meta name="theme-color" content="#14171C" media="(prefers-color-scheme: dark)">
+  <title>我的足迹 · xiaoxu & xiaofu</title>
+  <meta name="description" content="记录走过的城市，也记录那些城市里的故事。">
+  <meta property="og:title" content="我的足迹 · xiaoxu & xiaofu">
+  <meta property="og:description" content="记录走过的城市，也记录那些城市里的故事。">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.xiaoxu-xiaofu.top/cities.html">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="canonical" href="https://www.xiaoxu-xiaofu.top/cities.html">
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://api.tianditu.gov.cn/api?v=4.0&tk=5f448c2c46c784f69c71c18ff629d1fe"></script>
 </head>
 <body data-page="cities">
-  <header class="site-header">
-    <div class="container">
-      <a class="logo" href="index.html"><span class="logo-mark">xf</span><span class="js-site-name">xiaoxu & xiaofu</span></a>
-      <nav class="nav-links" aria-label="主导航">
-        <a href="index.html">首页</a>
-        <a href="about.html">关于</a>
-        <a href="blog.html">博客</a>
-        <a href="projects.html">项目</a>
-        <a href="gallery.html">瞬间</a>
-        <a href="contact.html">联系</a>
-      </nav>
-      <div class="header-actions">
-        <button class="theme-toggle" aria-label="切换主题">🌙</button>
-        <button class="menu-btn" aria-label="打开菜单" aria-expanded="false"><span></span><span></span><span></span></button>
-      </div>
+  <main class="trip-page">
+    <div class="trip-layout">
+      <aside class="trip-col trip-timeline-col">
+        <button class="trip-drawer-close" id="trip-timeline-close" type="button" aria-label="关闭时间轴">✕</button>
+        <div class="trip-col-head">
+          <h2>旅行时间轴</h2>
+          <p>把走过的城市，串成一段属于自己的旅程。</p>
+        </div>
+        <div class="trip-timeline" id="trip-timeline"></div>
+      </aside>
+
+      <section class="trip-col trip-map-col">
+        <div class="trip-map" id="trip-map"></div>
+        <div class="trip-overlay">
+          <a class="trip-back" href="index.html">← 首页</a>
+          <div class="trip-filters" id="trip-filters" role="tablist" aria-label="按年份筛选"></div>
+        </div>
+        <button class="trip-play" id="trip-play" type="button" aria-pressed="false">▶ 播放我的旅程</button>
+        <button class="trip-panel-toggle trip-panel-toggle-left" id="trip-toggle-left" type="button" aria-label="收起时间轴">‹</button>
+        <button class="trip-panel-toggle trip-panel-toggle-right" id="trip-toggle-right" type="button" aria-label="收起详情">›</button>
+      </section>
+
+      <aside class="trip-col trip-detail-col">
+        <button class="trip-drawer-close" id="trip-detail-close" type="button" aria-label="关闭详情">✕</button>
+        <div class="trip-detail" id="trip-detail"></div>
+      </aside>
     </div>
-  </header>
 
-  <main class="cities-main">
-    <div id="city-map" class="city-map" role="application" aria-label="走过的城市地图"></div>
-
-    <div class="city-map-title">
-      <p class="city-map-kicker">cities we have been</p>
-      <h1>走过的城市</h1>
-      <p id="city-map-subtitle">已点亮 0 座城市 · 点击轮廓查看记忆</p>
-    </div>
-
-    <aside class="city-memory-panel" id="city-memory" aria-live="polite" aria-hidden="true">
-      <button class="city-memory-close" id="city-memory-close" type="button" aria-label="关闭记忆卡片">✕</button>
-      <div class="city-memory-body" id="city-memory-body"></div>
-    </aside>
+    <div class="trip-backdrop" id="trip-backdrop"></div>
+    <footer class="trip-stats" id="trip-stats"></footer>
   </main>
 
   <script src="js/main.js"></script>

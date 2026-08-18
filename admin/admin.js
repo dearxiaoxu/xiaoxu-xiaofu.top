@@ -24,7 +24,7 @@
     { key: 'posts', label: '文章管理', icon: '📝' },
     { key: 'projects', label: '项目管理', icon: '🛠️' },
     { key: 'gallery', label: '相册管理', icon: '🖼️' },
-    { key: 'cities', label: '城市记忆', icon: '🗺️' },
+    { key: 'trips', label: '城市与旅行', icon: '🗺️' },
     { key: 'contact', label: '联系与留言', icon: '✉️' },
     { key: 'data', label: '数据与安全', icon: '🔐' },
     { key: 'logs', label: '运行日志', icon: '📋' }
@@ -37,11 +37,29 @@
     posts: '文章管理',
     projects: '项目管理',
     gallery: '相册管理',
-    cities: '城市记忆',
+    trips: '城市与旅行',
     contact: '联系与留言',
     data: '数据与安全',
     logs: '运行日志'
   };
+
+  /* 中国城市库（名称 + 拼音 + 经纬度），用于城市下拉与坐标自动填充 */
+  var CITY_LIST = [];
+  var CITY_READY = false;
+  function loadCities() {
+    if (CITY_READY) return Promise.resolve(CITY_LIST);
+    return fetch('/assets/cities.json')
+      .then(function (r) { if (!r.ok) throw new Error('city-load-failed'); return r.json(); })
+      .then(function (arr) {
+        CITY_LIST = Array.isArray(arr) ? arr : [];
+        CITY_READY = true;
+        return CITY_LIST;
+      })
+      .catch(function () {
+        CITY_READY = true;
+        return CITY_LIST;
+      });
+  }
 
   /* ============================================================
      工具函数
@@ -302,6 +320,146 @@
 
   function addBtn(list) {
     return '<button class="btn btn-sm" data-action="add" data-list="' + list + '">＋ 添加</button>';
+  }
+
+  /* ============================================================
+     城市下拉（可搜索、A-Z 覆盖、自动带出经纬度）
+     ============================================================ */
+  function cityComboboxHtml(base, t) {
+    var city = t && t.city ? t.city : '';
+    var coord = (t && typeof t.lng === 'number' && typeof t.lat === 'number')
+      ? '经度 ' + Number(t.lng).toFixed(2) + ' · 纬度 ' + Number(t.lat).toFixed(2)
+      : '选择城市后自动获取经纬度';
+    return '<div class="city-combobox" data-city-combobox data-base="' + esc(base) + '">' +
+      '<div class="city-search-wrap">' +
+      '<input type="text" class="city-search" data-city-search placeholder="搜索城市，如：南、成都、nan" autocomplete="off" value="' + esc(city) + '">' +
+      '<button type="button" class="city-clear" data-city-clear aria-label="清空">×</button>' +
+      '</div>' +
+      '<div class="city-dropdown" data-city-dropdown></div>' +
+      '<p class="f-hint city-coord" data-city-coord>' + esc(coord) + '</p>' +
+      '</div>';
+  }
+
+  function filterCities(q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return CITY_LIST;
+    var isCjk = /[\u4e00-\u9fff]/.test(q);
+    return CITY_LIST.filter(function (c) {
+      if (isCjk) return c.n.indexOf(q) !== -1;
+      return String(c.p || '').indexOf(q) === 0;
+    });
+  }
+
+  function renderCityDropdown(box) {
+    if (!CITY_READY) {
+      loadCities().then(function () { renderCityDropdown(box); });
+      return;
+    }
+    var dd = box.querySelector('[data-city-dropdown]');
+    var q = box.querySelector('[data-city-search]').value;
+    var list = filterCities(q).slice(0, 60);
+    if (!list.length) {
+      dd.innerHTML = '<div class="city-option city-empty">未找到匹配城市</div>';
+    } else {
+      dd.innerHTML = list.map(function (c) {
+        return '<button type="button" class="city-option" data-city-value="' + esc(c.n) + '">' +
+          '<span class="city-option-letter">' + esc(String(c.p || '').charAt(0).toUpperCase()) + '</span>' +
+          '<span class="city-option-name">' + esc(c.n) + '</span>' +
+          '<span class="city-option-prov">' + esc(c.prov || '') + '</span>' +
+          '</button>';
+      }).join('');
+    }
+    dd.classList.add('open');
+  }
+
+  function closeCityDropdown(box) {
+    var dd = box.querySelector('[data-city-dropdown]');
+    if (dd) dd.classList.remove('open');
+  }
+
+  function selectCity(box, name) {
+    var city = CITY_LIST.find(function (c) { return c.n === name; });
+    if (!city) return;
+    var base = box.dataset.base;
+    setPath(state.db, base + '.city', city.n);
+    setPath(state.db, base + '.cityId', city.p);
+    setPath(state.db, base + '.lng', city.lng);
+    setPath(state.db, base + '.lat', city.lat);
+    box.querySelector('[data-city-search]').value = city.n;
+    box.querySelector('[data-city-coord]').textContent =
+      '经度 ' + Number(city.lng).toFixed(2) + ' · 纬度 ' + Number(city.lat).toFixed(2);
+    state.dirty = true;
+    updateDirty();
+    closeCityDropdown(box);
+  }
+
+  function clearCity(box) {
+    var base = box.dataset.base;
+    setPath(state.db, base + '.city', '');
+    setPath(state.db, base + '.cityId', '');
+    setPath(state.db, base + '.lng', null);
+    setPath(state.db, base + '.lat', null);
+    box.querySelector('[data-city-search]').value = '';
+    box.querySelector('[data-city-coord]').textContent = '选择城市后自动获取经纬度';
+    state.dirty = true;
+    updateDirty();
+    closeCityDropdown(box);
+    box.querySelector('[data-city-search]').focus();
+  }
+
+  function initCityCombobox(box) {
+    var search = box.querySelector('[data-city-search]');
+    var clearBtn = box.querySelector('[data-city-clear]');
+
+    search.addEventListener('input', function () {
+      renderCityDropdown(box);
+      if (!search.value) clearCity(box);
+    });
+    search.addEventListener('focus', function () {
+      if (!CITY_READY) loadCities().then(function () { renderCityDropdown(box); });
+      else renderCityDropdown(box);
+    });
+    search.addEventListener('keydown', function (e) {
+      var dd = box.querySelector('[data-city-dropdown]');
+      var opts = Array.prototype.slice.call(dd.querySelectorAll('.city-option[data-city-value]'));
+      var active = dd.querySelector('.city-option.active');
+      var idx = active ? opts.indexOf(active) : -1;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (opts.length) {
+          opts.forEach(function (o) { o.classList.remove('active'); });
+          idx = (idx + 1) % opts.length;
+          opts[idx].classList.add('active');
+          opts[idx].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (opts.length) {
+          opts.forEach(function (o) { o.classList.remove('active'); });
+          idx = idx <= 0 ? opts.length - 1 : idx - 1;
+          opts[idx].classList.add('active');
+          opts[idx].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        var chosen = active || opts[0];
+        if (chosen) selectCity(box, chosen.dataset.cityValue);
+      } else if (e.key === 'Escape') {
+        closeCityDropdown(box);
+      }
+    });
+
+    clearBtn.addEventListener('click', function () { clearCity(box); });
+
+    box.querySelector('[data-city-dropdown]').addEventListener('click', function (e) {
+      var opt = e.target.closest('.city-option[data-city-value]');
+      if (opt) selectCity(box, opt.dataset.cityValue);
+    });
+  }
+
+  function initCityComboboxes() {
+    document.querySelectorAll('[data-city-combobox]').forEach(initCityCombobox);
+    if (!CITY_READY) loadCities();
   }
 
   /* ============================================================
@@ -657,25 +815,111 @@
   }
 
   /* --- 城市记忆 --- */
-  function renderCities() {
-    var arr = state.db.cities || [];
-    var head = '<div class="list-toolbar"><p class="muted">共 ' + arr.length + ' 座城市</p>' +
-      '<button class="btn" data-action="add" data-list="cities">＋ 添加城市</button></div>';
-    if (!arr.length) return head + emptyNote('还没有城市数据');
-    var cards = arr.map(function (c, i) {
-      var name = c.name || ('城市 ' + (i + 1));
-      return '<div class="list-card"><div class="list-card-head"><span class="mono-tag">' + esc(name) + '</span>' +
-        '<button class="icon-btn" data-action="remove" data-list="cities" data-index="' + i + '" title="删除">✕</button></div>' +
+  /* --- 城市与旅行 --- */
+  function renderTrips() {
+    if (state.editor && state.editor.type === 'trips') return renderTripEditor();
+    return listTrips();
+  }
+
+  function listTrips() {
+    var arr = state.db.trips || [];
+    var head = '<div class="list-toolbar"><p class="muted">共 ' + arr.length + ' 段旅行</p>' +
+      '<button class="btn" data-action="new-trip">＋ 添加旅行</button></div>';
+    if (!arr.length) return head + emptyNote('还没有旅行记录');
+    var rows = arr.map(function (t) {
+      return '<div class="row-item"><div class="row-main">' +
+        '<div class="row-title">' + esc(t.city || '（未命名）') + '</div>' +
+        '<div class="row-meta mono-tag">' + esc((t.start || '') + (t.end ? ' → ' + t.end : '')) +
+        (t.tags && t.tags.length ? ' · ' + esc(t.tags.join(' / ')) : '') + '</div>' +
+        '</div><div class="row-actions">' +
+        '<button class="btn btn-sm" data-action="edit-trip" data-id="' + esc(t.id) + '">编辑</button>' +
+        '<button class="btn btn-sm btn-ghost" data-action="del-trip" data-id="' + esc(t.id) + '">删除</button>' +
+        '</div></div>';
+    }).join('');
+    return head + '<div class="rows">' + rows + '</div>';
+  }
+
+  function renderTripEditor() {
+    var idx = state.db.trips.findIndex(function (t) { return t.id === state.editor.id; });
+    var t = state.db.trips[idx];
+    if (!t) { state.editor = null; return listTrips(); }
+    var base = 'trips.' + idx;
+    if (!Array.isArray(t.photos)) t.photos = [{ src: '', caption: '' }];
+    if (!t.rating) t.rating = { atmosphere: 5, food: 5, scenery: 4, again: 5 };
+    if (!Array.isArray(t.tags)) t.tags = [];
+    if (!Array.isArray(t.spots)) t.spots = [];
+
+    var photoRows = t.photos.map(function (p, j) {
+      return '<div class="photo-editor-row">' +
         '<div class="grid-2">' +
-        field('城市名', input('cities.' + i + '.name')) +
-        field('是否走过', checkToggle('cities.' + i + '.visited')) +
-        field('纬度 lat', input('cities.' + i + '.lat', { dataType: 'number' })) +
-        field('经度 lng', input('cities.' + i + '.lng', { dataType: 'number' })) +
+        field('图片 URL', input(base + '.photos.' + j + '.src')) +
+        field('说明', input(base + '.photos.' + j + '.caption')) +
         '</div>' +
-        field('关于这座城市的记忆', input('cities.' + i + '.memory', { rows: 3 })) +
+        '<div class="photo-editor-actions">' +
+        '<label class="btn btn-sm btn-ghost">上传<input type="file" accept="image/*" data-upload-bind="' + base + '.photos.' + j + '.src" class="hidden-file"></label>' +
+        '<button class="btn btn-sm btn-ghost" data-action="remove-photo" data-base="' + base + '" data-index="' + j + '">删除</button>' +
+        '</div>' +
+        (p.src ? '<div class="upload-preview"><img src="' + esc(p.src) + '" alt=""></div>' : '') +
         '</div>';
     }).join('');
-    return head + '<div class="rows">' + cards + '</div>';
+
+    return '<div class="editor-head">' +
+      '<button class="btn btn-ghost" data-action="back-list">← 返回旅行记录</button>' +
+      '<span class="mono-tag">ID：' + esc(t.id) + '</span></div>' +
+      section('基本信息', [
+        field('城市', cityComboboxHtml(base, t), { hint: '支持输入城市名或拼音模糊检索（如输入“南”会带出南京、南通、南昌等），选中后自动填充城市 ID 与经纬度。' }),
+        '<div class="grid-2">',
+        field('开始日期', input(base + '.start', { type: 'date' })),
+        field('结束日期', input(base + '.end', { type: 'date' })),
+        '</div>'
+      ].join('')) +
+      section('故事内容', [
+        field('城市记忆（一句话 quote）', input(base + '.quote', { rows: 2 })),
+        field('旅行故事 story', input(base + '.story', { rows: 4 })),
+        field('标签（逗号分隔）', input(base + '.tags', { dataType: 'csv' })),
+        field('去过的地点（逗号分隔）', input(base + '.spots', { dataType: 'csv' })),
+        '<div class="grid-2">',
+        field('同行的人', input(base + '.companions')),
+        field('天气', input(base + '.weather')),
+        field('心情（如 ★★★★★）', input(base + '.mood')),
+        '</div>'
+      ].join('')) +
+      section('我的评分（1-5）', [
+        '<div class="grid-2">',
+        field('氛围感', input(base + '.rating.atmosphere', { dataType: 'number' })),
+        field('美食', input(base + '.rating.food', { dataType: 'number' })),
+        field('风景', input(base + '.rating.scenery', { dataType: 'number' })),
+        field('再来一次', input(base + '.rating.again', { dataType: 'number' })),
+        '</div>'
+      ].join('')) +
+      section('照片（可传多张）',
+        '<label class="btn btn-sm">批量上传多张<input type="file" accept="image/*" multiple data-upload-multi="' + base + '" class="hidden-file"></label>' +
+        photoRows +
+        '<button class="btn btn-sm" data-action="add-photo" data-base="' + base + '">＋ 手动添加一行</button>');
+  }
+
+  function newTrip() {
+    var id = 't-' + Date.now();
+    state.db.trips.push({
+      id: id, cityId: '', city: '', lng: null, lat: null, start: '', end: '',
+      quote: '', story: '', tags: [], spots: [], companions: '', mood: '', weather: '',
+      rating: { atmosphere: 5, food: 5, scenery: 4, again: 5 },
+      photos: [{ src: '', caption: '' }]
+    });
+    state.editor = { type: 'trips', id: id };
+    state.dirty = true;
+    updateDirty();
+    renderTab('trips');
+  }
+
+  function delTrip(id) {
+    var t = state.db.trips.find(function (x) { return x.id === id; });
+    if (!t) return;
+    if (!confirm('确定删除「' + (t.city || id) + '」这段旅行吗？')) return;
+    state.db.trips = state.db.trips.filter(function (x) { return x.id !== id; });
+    state.dirty = true;
+    updateDirty();
+    renderTab('trips');
   }
 
   /* --- 联系与留言 --- */
@@ -774,7 +1018,7 @@
     posts: renderPosts,
     projects: renderProjects,
     gallery: renderGallery,
-    cities: renderCities,
+    trips: renderTrips,
     contact: renderContact,
     data: renderData,
     logs: renderLogs
@@ -790,6 +1034,7 @@
     });
     $('page-title').textContent = PAGE_TITLES[key] || '管理后台';
     $('view').innerHTML = renderers[key] ? renderers[key]() : '';
+    initCityComboboxes();
     if (key === 'logs') setTimeout(loadLogs, 0);
     closeSidebar();
     window.scrollTo(0, 0);
@@ -834,7 +1079,24 @@
     setPath(state.db, bind, value);
     state.dirty = true;
     updateDirty();
+    enforceTripDateRange(bind);
     if (el.dataset.rerender) renderTab(state.activeTab);
+  }
+
+  function enforceTripDateRange(bind) {
+    var m = bind.match(/^(.+)\.(start|end)$/);
+    if (!m) return;
+    var base = m[1];
+    var t = getPath(state.db, base);
+    if (!t || typeof t !== 'object') return;
+    var start = typeof t.start === 'string' ? t.start : '';
+    var end = typeof t.end === 'string' ? t.end : '';
+    if (!start || !end || end >= start) return;
+    // 结束日期不能早于开始日期：统一把结束日期拉回到开始日期
+    setPath(state.db, base + '.end', start);
+    var el = document.querySelector('[data-bind="' + base + '.end"]');
+    if (el) el.value = start;
+    toast('结束日期不能早于开始日期，已自动调整', 'warn');
   }
 
   function onInput(e) {
@@ -846,6 +1108,11 @@
     var el = e.target;
     if (!el || !el.dataset) return;
     if (el.dataset.bind) { handleFieldChange(el); return; }
+    if (el.dataset.uploadMulti) {
+      onUploadImages(el.files, el.dataset.uploadMulti);
+      el.value = '';
+      return;
+    }
     if (el.dataset.uploadBind) {
       onUploadImage(el.files && el.files[0], el.dataset.uploadBind);
       el.value = '';
@@ -868,7 +1135,7 @@
     'about.story.timeline': { time: '', title: '', text: '' },
     'about.hobbies': { emoji: '', title: '', text: '' },
     'contact.cards': { icon: '', title: '', text: '', link: '', note: '' },
-    'cities': { id: '', name: '', lat: 0, lng: 0, visited: false, memory: '' }
+    'trips': { id: '', cityId: '', city: '', lng: null, lat: null, start: '', end: '', quote: '', story: '', tags: [], spots: [], companions: '', mood: '', weather: '', rating: { atmosphere: 5, food: 5, scenery: 4, again: 5 }, photos: [{ src: '', caption: '' }] }
   };
 
   function addItem(list) {
@@ -970,72 +1237,129 @@
   /* ============================================================
      图片上传
      ============================================================ */
-  function onUploadImage(file, bind) {
-    if (!file) return;
-    if (file.type.indexOf('image/') !== 0) { toast('请选择图片文件', 'warn'); return; }
-
-    var upload = function (name, data) {
-      toast('正在上传…', 'ok');
-      api('/api/upload', { method: 'POST', body: { name: name, data: data } })
-        .then(function (r) {
-          setPath(state.db, bind, r.url);
-          state.dirty = true;
-          updateDirty();
-          renderTab(state.activeTab);
-          toast('上传成功', 'ok');
-        })
-        .catch(function (err) {
-          if (err.status !== 401) toast('上传失败：' + (err.message || '未知错误'), 'err');
-        });
-    };
+  function uploadImageFile(file) {
+    // 返回 Promise，resolve 为上传后的 URL；内部做小图直传 / 大图压缩。
+    if (!file) return Promise.reject(new Error('no-file'));
+    if (file.type.indexOf('image/') !== 0) return Promise.reject(new Error('not-image'));
 
     var readAsBase64 = function (blob) {
       return new Promise(function (resolve, reject) {
         var reader = new FileReader();
         reader.onload = function () { resolve(String(reader.result).split(',')[1]); };
-        reader.onerror = reject;
+        reader.onerror = function () { reject(new Error('read-failed')); };
         reader.readAsDataURL(blob);
       });
     };
 
+    var upload = function (name, data) {
+      return api('/api/upload', { method: 'POST', body: { name: name, data: data } })
+        .then(function (r) { return r.url; });
+    };
+
     // 小图直接原样上传（避免破坏 GIF 动图、透明 PNG）
     if (file.size < 800 * 1024) {
-      readAsBase64(file).then(function (b) { upload(file.name, b); })
-        .catch(function () { toast('读取图片失败', 'err'); });
-      return;
+      return readAsBase64(file).then(function (b) { return upload(file.name, b); });
     }
 
-    // 大图自动压缩：最长边 1920px、JPEG 质量 0.82，体积通常降到 300KB 以内
-    toast('正在压缩图片…', 'ok');
-    var objectUrl = URL.createObjectURL(file);
-    var img = new Image();
-    img.onload = function () {
-      URL.revokeObjectURL(objectUrl);
-      var maxEdge = 1920;
-      var scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-      var w = Math.round(img.width * scale);
-      var h = Math.round(img.height * scale);
-      var canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      try {
-        canvas.toBlob(function (blob) {
-          if (!blob) { readAsBase64(file).then(function (b) { upload(file.name, b); }); return; }
-          readAsBase64(blob).then(function (b) {
-            upload(file.name.replace(/\.[^.]+$/, '') + '.jpg', b);
-          });
-        }, 'image/jpeg', 0.82);
-      } catch (e) {
-        readAsBase64(file).then(function (b) { upload(file.name, b); })
-          .catch(function () { toast('读取图片失败', 'err'); });
-      }
-    };
-    img.onerror = function () {
-      URL.revokeObjectURL(objectUrl);
-      readAsBase64(file).then(function (b) { upload(file.name, b); })
-        .catch(function () { toast('读取图片失败', 'err'); });
-    };
-    img.src = objectUrl;
+    // 大图自动压缩：最长边 1920px、JPEG 质量 0.82
+    return new Promise(function (resolve, reject) {
+      var objectUrl = URL.createObjectURL(file);
+      var img = new Image();
+      var finish = function (blob, name) {
+        if (!blob) {
+          readAsBase64(file)
+            .then(function (b) { return upload(file.name, b); })
+            .then(resolve, reject);
+          return;
+        }
+        readAsBase64(blob)
+          .then(function (b) { return upload(name, b); })
+          .then(resolve, reject);
+      };
+      img.onload = function () {
+        URL.revokeObjectURL(objectUrl);
+        var maxEdge = 1920;
+        var scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        var w = Math.max(1, Math.round(img.width * scale));
+        var h = Math.max(1, Math.round(img.height * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        try {
+          canvas.toBlob(function (blob) {
+            finish(blob, file.name.replace(/\.[^.]+$/, '') + '.jpg');
+          }, 'image/jpeg', 0.82);
+        } catch (e) {
+          readAsBase64(file).then(function (b) { return upload(file.name, b); }).then(resolve, reject);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(objectUrl);
+        readAsBase64(file).then(function (b) { return upload(file.name, b); }).then(resolve, reject);
+      };
+      img.src = objectUrl;
+    });
+  }
+
+  function onUploadImage(file, bind) {
+    if (!file) return;
+    if (file.type.indexOf('image/') !== 0) { toast('请选择图片文件', 'warn'); return; }
+    toast('正在上传…', 'ok');
+    uploadImageFile(file)
+      .then(function (url) {
+        setPath(state.db, bind, url);
+        state.dirty = true;
+        updateDirty();
+        renderTab(state.activeTab);
+        toast('上传成功', 'ok');
+      })
+      .catch(function (err) {
+        if (err && err.status !== 401) toast('上传失败：' + (err.message || '未知错误'), 'err');
+      });
+  }
+
+  function onUploadImages(files, base) {
+    var list = Array.prototype.slice.call(files || []).filter(function (f) {
+      return f && f.type && f.type.indexOf('image/') === 0;
+    });
+    if (!list.length) { toast('请选择图片文件', 'warn'); return; }
+
+    var arr = getPath(state.db, base + '.photos');
+    if (!Array.isArray(arr)) arr = [];
+    // 去掉尚未上传的空占位行，避免批量上传后残留空白条目
+    arr = arr.filter(function (p) { return p && (p.src || p.caption); });
+    setPath(state.db, base + '.photos', arr);
+
+    var start = arr.length;
+    list.forEach(function () { arr.push({ src: '', caption: '' }); });
+    state.dirty = true;
+    updateDirty();
+    toast('正在上传 ' + list.length + ' 张图片…', 'ok');
+
+    var jobs = list.map(function (f, i) {
+      return uploadImageFile(f).then(function (url) {
+        arr[start + i].src = url;
+      });
+    });
+
+    Promise.allSettled(jobs)
+      .then(function (results) {
+        var ok = results.filter(function (r) { return r.status === 'fulfilled'; }).length;
+        state.dirty = true;
+        updateDirty();
+        renderTab(state.activeTab);
+        if (ok === list.length) {
+          toast('已上传 ' + list.length + ' 张图片', 'ok');
+        } else {
+          toast('上传完成：成功 ' + ok + ' 张，失败 ' + (list.length - ok) + ' 张', 'err');
+        }
+      })
+      .catch(function () {
+        state.dirty = true;
+        updateDirty();
+        renderTab(state.activeTab);
+        toast('图片上传中断', 'err');
+      });
   }
 
   /* ============================================================
@@ -1064,6 +1388,7 @@
       Array.isArray(o.projects) &&
       Array.isArray(o.gallery) &&
       Array.isArray(o.cities) &&
+      Array.isArray(o.trips) &&
       typeof o.contact === 'object' &&
       Array.isArray(o.messages);
   }
@@ -1164,6 +1489,16 @@
       case 'del-gallery':
         delGallery(el.dataset.id);
         break;
+      case 'new-trip':
+        newTrip();
+        break;
+      case 'edit-trip':
+        state.editor = { type: 'trips', id: el.dataset.id };
+        renderTab('trips');
+        break;
+      case 'del-trip':
+        delTrip(el.dataset.id);
+        break;
       case 'add-photo':
         addPhoto(el.dataset.base);
         break;
@@ -1210,6 +1545,13 @@
     $('view').addEventListener('input', onInput);
     $('view').addEventListener('change', onChange);
     $('view').addEventListener('click', onClick);
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('[data-city-combobox]')) {
+        document.querySelectorAll('[data-city-dropdown].open').forEach(function (dd) {
+          dd.classList.remove('open');
+        });
+      }
+    });
   }
 
   function init() {

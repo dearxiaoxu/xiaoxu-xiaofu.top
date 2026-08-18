@@ -43,19 +43,6 @@
   var DB = null;
   var PAGE = document.body.getAttribute("data-page") || "index";
 
-  /* 城市 id → 行政区划编码（对应 assets/boundaries/{adcode}.json，坐标已转为 WGS84） */
-  var CITY_ADCODES = {
-    "beijing": "110000", "tianjin": "120000", "shijiazhuang": "130100", "taiyuan": "140100",
-    "hohhot": "150100", "shenyang": "210100", "dalian": "210200", "changchun": "220100",
-    "harbin": "230100", "shanghai": "310000", "nanjing": "320100", "suzhou": "320500",
-    "hangzhou": "330100", "hefei": "340100", "fuzhou": "350100", "xiamen": "350200",
-    "jinan": "370100", "qingdao": "370200", "zhengzhou": "410100", "wuhan": "420100",
-    "changsha": "430100", "guangzhou": "440100", "shenzhen": "440300", "nanning": "450100",
-    "haikou": "460100", "sanya": "460200", "chengdu": "510100", "chongqing": "500000",
-    "guiyang": "520100", "kunming": "530100", "lhasa": "540100", "xian": "610100",
-    "lanzhou": "620100", "xining": "630100", "yinchuan": "640100", "urumqi": "650100"
-  };
-
   /* ---------- 公共片段 ---------- */
   function galleryItemHTML(g, extra) {
     extra = extra || "";
@@ -152,7 +139,10 @@
 
   function renderIndex() {
     var h = DB.hero || {}, s = DB.site || {};
-    var visitedCities = (DB.cities || []).filter(function (c) { return c.visited; }).length;
+    var tripCities = {};
+    (DB.trips || []).forEach(function (t) { if (t.city || t.cityId) tripCities[t.city || t.cityId] = 1; });
+    var visitedCities = Object.keys(tripCities).length ||
+      (DB.cities || []).filter(function (c) { return c.visited; }).length;
     var totalPhotos = countPhotos(DB.gallery || []);
 
     var statsHTML = (h.stats || []).map(function (st) {
@@ -273,137 +263,487 @@
       '<div class="card" style="padding:26px 28px;text-align:center;color:var(--ink-2);">相册还空着，去后台添加照片吧～</div>';
   }
 
-  function renderCities() {
-    var cities = (DB.cities || []).filter(function (c) { return typeof c.lat === "number" && typeof c.lng === "number"; });
-    var map = $("city-map");
-    var panel = $("city-memory");
-    var panelBody = $("city-memory-body");
-    var subtitle = $("city-map-subtitle");
-    if (!map) return;
+  function renderTrips() {
+    var mapEl = $("trip-map");
+    var timelineEl = $("trip-timeline");
+    var detailEl = $("trip-detail");
+    var filtersEl = $("trip-filters");
+    var statsEl = $("trip-stats");
+    var playBtn = $("trip-play");
+    if (!mapEl) return;
 
-    var visited = cities.filter(function (c) { return c.visited; });
-    if (subtitle) subtitle.textContent = "已点亮 " + visited.length + " 座城市 · 点击轮廓查看记忆";
+    var trips = (DB.trips || []).filter(function (t) {
+      return t && typeof t.lng === "number" && typeof t.lat === "number";
+    }).slice().sort(function (a, b) {
+      return String(a.start || "").localeCompare(String(b.start || ""));
+    });
 
-    if (!window.T || !window.T.Map) {
-      map.innerHTML = '<div class="city-map-fallback"><p>地图正在加载中，请确认网络可以访问天地图服务。</p></div>';
-      return;
+    var year = "all";
+    var activeId = null;
+    var playing = false;
+    var playTimer = null;
+    var provinces = null;
+
+    var popEl = document.createElement("div");
+    popEl.className = "trip-map-pop";
+    mapEl.appendChild(popEl);
+
+    /* 左右面板：手动收起 / 展开（移动端为抽屉） */
+    var pageEl = mapEl.closest(".trip-page");
+    var leftToggle = $("trip-toggle-left");
+    var rightToggle = $("trip-toggle-right");
+    var timelineClose = $("trip-timeline-close");
+    var detailClose = $("trip-detail-close");
+    var backdrop = $("trip-backdrop");
+    var mobileMQ = window.matchMedia("(max-width: 900px)");
+
+    function isPanelCollapsed(side) {
+      return pageEl.classList.contains(side === "left" ? "left-collapsed" : "right-collapsed");
+    }
+    function setPanelCollapsed(side, collapsed) {
+      var cls = side === "left" ? "left-collapsed" : "right-collapsed";
+      pageEl.classList.toggle(cls, collapsed);
+      if (side === "left") {
+        leftToggle.textContent = collapsed ? "›" : "‹";
+        leftToggle.setAttribute("aria-label", collapsed ? "展开时间轴" : "收起时间轴");
+      } else {
+        rightToggle.textContent = collapsed ? "‹" : "›";
+        rightToggle.setAttribute("aria-label", collapsed ? "展开详情" : "收起详情");
+      }
+      pageEl.classList.toggle("drawer-open", !isPanelCollapsed("left") || !isPanelCollapsed("right"));
     }
 
-    try {
-      var tmap = new window.T.Map(map.id);
-      tmap.centerAndZoom(new window.T.LngLat(104.0, 35.0), 4);
-      if (window.T.Control && window.T.Control.Scale) tmap.addControl(new window.T.Control.Scale());
-
-      function refreshMapSize() {
-        try { if (tmap.checkResize) tmap.checkResize(); } catch (e) { /* 忽略 */ }
-      }
-      window.addEventListener("resize", refreshMapSize);
-      if (window.visualViewport) window.visualViewport.addEventListener("resize", refreshMapSize);
-
-      var dotIconUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
-        '<circle cx="6" cy="6" r="3.4" fill="#FA8952" stroke="#FFE0B0" stroke-width="1.2" opacity="0.95"/>' +
-        '</svg>'
-      );
-
-      function showCity(c) {
-        if (panelBody) {
-          panelBody.innerHTML = '<h3>' + esc(c.name) + '</h3>' +
-            '<p class="city-memory-text">' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p>' +
-            '<p class="city-memory-meta">已点亮 · 一起走过</p>';
-        }
-        if (panel) { panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); }
-      }
-
-      function hideCity() {
-        if (panel) { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); }
-      }
-
-      var closeBtn = $("city-memory-close");
-      if (closeBtn) closeBtn.addEventListener("click", hideCity);
-
-      function cityInfo(c) {
-        var html = '<div class="tianditu-info"><b>' + esc(c.name) + '</b>' +
-          '<p>' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p></div>';
-        return new window.T.InfoWindow(html, { width: 240, height: 110, title: c.name });
-      }
-
-      function addCenterDot(c) {
-        var marker;
-        try {
-          var icon = new window.T.Icon({
-            iconUrl: dotIconUrl,
-            iconSize: new window.T.Point(12, 12),
-            iconAnchor: new window.T.Point(6, 6)
-          });
-          marker = new window.T.Marker(new window.T.LngLat(c.lng, c.lat), { icon: icon });
-        } catch (e) {
-          marker = new window.T.Marker(new window.T.LngLat(c.lng, c.lat));
-        }
-        marker.addEventListener("click", function () {
-          showCity(c);
-          try { marker.openInfoWindow(cityInfo(c)); } catch (e) { /* 忽略 */ }
-        });
-        tmap.addOverLay(marker);
-        return marker;
-      }
-
-      function ringToPoints(ring) {
-        var pts = [];
-        for (var i = 0; i < ring.length; i++) {
-          var p = ring[i];
-          if (p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1])) {
-            pts.push(new window.T.LngLat(p[0], p[1]));
-          }
-        }
-        return pts;
-      }
-
-      function drawBoundary(geometry, c, marker) {
-        if (!geometry || !Array.isArray(geometry.coordinates)) return;
-        var rings = [];
-        if (geometry.type === "Polygon") rings = geometry.coordinates;
-        else if (geometry.type === "MultiPolygon") {
-          geometry.coordinates.forEach(function (poly) {
-            poly.forEach(function (r) { rings.push(r); });
-          });
-        }
-        rings.forEach(function (ring) {
-          var pts = ringToPoints(ring);
-          if (pts.length < 3) return;
-          var area = new window.T.Polygon(pts, {
-            strokeColor: "#FFD9A8",
-            strokeWeight: 2,
-            strokeOpacity: 0.95,
-            fillColor: "#FA8952",
-            fillOpacity: 0.18
-          });
-          area.addEventListener("click", function () {
-            showCity(c);
-            if (marker) { try { marker.openInfoWindow(cityInfo(c)); } catch (e) { /* 忽略 */ } }
-          });
-          tmap.addOverLay(area);
-        });
-      }
-
-      function loadCity(c) {
-        var marker = addCenterDot(c);
-        var adcode = CITY_ADCODES[c.id];
-        if (!adcode) return;
-        fetch("assets/boundaries/" + adcode + ".json", { cache: "default" })
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.json();
-          })
-          .then(function (d) { drawBoundary(d.geometry, c, marker); })
-          .catch(function () { /* 轮廓加载失败时保留中心圆点 */ });
-      }
-
-      visited.forEach(loadCity);
-    } catch (err) {
-      console.error("天地图初始化失败:", err);
-      map.innerHTML = '<div class="city-map-fallback"><p>地图暂时不可用，请稍后刷新重试。</p></div>';
+    /* 投影：中国陆地范围 → SVG viewBox */
+    var VIEW_W = 900, VIEW_H = 700, PAD = 48;
+    var MIN_LNG = 73.5, MAX_LNG = 135.1, MIN_LAT = 18.2, MAX_LAT = 53.6;
+    function mercY(lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * (180 / Math.PI); }
+    var MIN_Y = mercY(MIN_LAT), MAX_Y = mercY(MAX_LAT);
+    function project(lng, lat) {
+      var x = (lng - MIN_LNG) / (MAX_LNG - MIN_LNG);
+      var y = (mercY(lat) - MIN_Y) / (MAX_Y - MIN_Y);
+      return [PAD + x * (VIEW_W - PAD * 2), PAD + (1 - y) * (VIEW_H - PAD * 2)];
     }
+
+    function getYear(t) { return String((t.start || "").slice(0, 4) || ""); }
+    function tripDays(t) {
+      if (!t.start) return 0;
+      var a = new Date(t.start), b = t.end ? new Date(t.end) : new Date(t.start);
+      if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
+      return Math.max(1, Math.round((b - a) / 86400000) + 1);
+    }
+    function fmtRange(t) {
+      if (!t.start) return "";
+      var s = t.start.slice(5).replace(/-/g, ".");
+      var e = t.end ? t.end.slice(5).replace(/-/g, ".") : "";
+      return s + (e ? " — " + e : "");
+    }
+    function fullDate(t) {
+      if (!t.start) return "";
+      return t.start.replace(/-/g, ".") + (t.end ? "—" + t.end.replace(/-/g, ".") : "");
+    }
+    function haversine(a, b) {
+      var R = 6371;
+      function rad(v) { return v * Math.PI / 180; }
+      var dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+      var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }
+    function filtered() {
+      if (year === "all") return trips;
+      return trips.filter(function (t) { return getYear(t) === year; });
+    }
+    function findTrip(id) {
+      for (var i = 0; i < trips.length; i++) if (trips[i].id === id) return trips[i];
+      return null;
+    }
+    function stars(n) {
+      n = Math.max(0, Math.min(5, Number(n) || 0));
+      var s = "";
+      for (var i = 0; i < 5; i++) s += i < n ? "★" : "☆";
+      return s;
+    }
+
+    function computeStats(list) {
+      var seen = {}, photos = 0, days = 0;
+      list.forEach(function (t) {
+        seen[t.city || t.cityId] = 1;
+        photos += (t.photos || []).length;
+        days += tripDays(t);
+      });
+      var km = 0;
+      for (var i = 1; i < list.length; i++) km += haversine(list[i - 1], list[i]);
+      return { cities: Object.keys(seen).length, trips: list.length, days: days, photos: photos, km: Math.round(km) };
+    }
+
+    function renderStats() {
+      var s = computeStats(filtered());
+      statsEl.innerHTML = '<div class="trip-stats-inner">' +
+        '<span class="trip-stat"><b class="blue">' + s.cities + '</b>去过城市</span>' +
+        '<span class="trip-stat"><b>' + s.trips + '</b>次旅行</span>' +
+        '<span class="trip-stat"><b>' + s.days + '</b>天在路上</span>' +
+        '<span class="trip-stat"><b>' + s.photos + '</b>张照片</span>' +
+        '<span class="trip-stat"><b>' + s.km.toLocaleString() + '</b>km 旅行距离</span>' +
+        '</div>';
+    }
+
+    function renderFilters() {
+      var years = {};
+      trips.forEach(function (t) { var y = getYear(t); if (y) years[y] = 1; });
+      var html = '<button class="trip-filter' + (year === "all" ? " active" : "") + '" data-year="all" role="tab" aria-selected="' + (year === "all") + '">全部</button>';
+      Object.keys(years).sort().forEach(function (y) {
+        html += '<button class="trip-filter' + (year === y ? " active" : "") + '" data-year="' + esc(y) + '" role="tab" aria-selected="' + (year === y) + '">' + esc(y) + '</button>';
+      });
+      filtersEl.innerHTML = html;
+    }
+
+    function timelineItem(t) {
+      return '<div class="trip-item' + (t.id === activeId ? " active" : "") + '" data-trip="' + esc(t.id) + '" role="button" tabindex="0">' +
+        '<div class="trip-item-date">' + esc(fmtRange(t)) + '</div>' +
+        '<div class="trip-item-city">' + esc(t.city || "") + '</div>' +
+        '<div class="trip-item-tags">' + esc((t.tags || []).join(" · ")) + '</div></div>';
+    }
+
+    function renderTimeline() {
+      var list = filtered();
+      if (!list.length) {
+        timelineEl.innerHTML = '<div class="trip-detail-empty">这个年份还没有旅行记录。</div>';
+        return;
+      }
+      var byYear = {};
+      list.forEach(function (t) {
+        var y = getYear(t) || "未标注";
+        (byYear[y] = byYear[y] || []).push(t);
+      });
+      var html = "";
+      Object.keys(byYear).sort().forEach(function (y) {
+        html += '<div class="trip-year"><div class="trip-year-label">' + esc(y) + '</div>' + byYear[y].map(timelineItem).join("") + '</div>';
+      });
+      timelineEl.innerHTML = html;
+    }
+
+    function ringPath(ring) {
+      if (!ring || ring.length < 3) return "";
+      var d = "";
+      for (var i = 0; i < ring.length; i++) {
+        var p = project(ring[i][0], ring[i][1]);
+        d += (i ? " L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1);
+      }
+      return d + " Z";
+    }
+    function geometryPaths(g) {
+      if (!g || !Array.isArray(g.coordinates)) return "";
+      var out = "";
+      if (g.type === "Polygon") g.coordinates.forEach(function (r) { out += ringPath(r); });
+      else if (g.type === "MultiPolygon") g.coordinates.forEach(function (poly) { poly.forEach(function (r) { out += ringPath(r); }); });
+      return out;
+    }
+
+    function nodeHTML(t) {
+      var p = project(t.lng, t.lat);
+      return '<g class="trip-node' + (t.id === activeId ? " active" : "") + '" data-trip="' + esc(t.id) + '" tabindex="0" role="button">' +
+        '<circle class="node-ring" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="14"/>' +
+        '<circle class="node-dot" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="5"/>' +
+        '<text class="node-label" x="' + p[0].toFixed(1) + '" y="' + (p[1] - 16).toFixed(1) + '">' + esc(t.city || "") + '</text></g>';
+    }
+
+    /* 自由缩放 / 平移 / 城市聚焦 */
+    var view = { scale: 1, tx: 0, ty: 0 };
+    var MIN_SCALE = 1, MAX_SCALE = 8;
+    function layerEl() { return mapEl.querySelector(".trip-map-layer"); }
+    function applyView(instant) {
+      var layer = layerEl();
+      if (!layer) return;
+      if (instant) layer.classList.add("instant");
+      else layer.classList.remove("instant");
+      layer.style.transform = "translate(" + view.tx + "px, " + view.ty + "px) scale(" + view.scale + ")";
+    }
+    function clampView() {
+      view.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale));
+      view.tx = Math.min(0, Math.max(VIEW_W - VIEW_W * view.scale, view.tx));
+      view.ty = Math.min(0, Math.max(VIEW_H - VIEW_H * view.scale, view.ty));
+    }
+    function focusTrip(t) {
+      if (!t) {
+        view = { scale: 1, tx: 0, ty: 0 };
+        applyView(false);
+        return;
+      }
+      var p = project(t.lng, t.lat);
+      view.scale = Math.max(view.scale, 1.75);
+      view.tx = VIEW_W / 2 - view.scale * p[0];
+      view.ty = VIEW_H / 2 - view.scale * p[1];
+      clampView();
+      applyView(false);
+    }
+    function svgPoint(clientX, clientY) {
+      var svg = mapEl.querySelector("svg");
+      if (!svg || !svg.createSVGPoint) return null;
+      var pt = svg.createSVGPoint();
+      pt.x = clientX; pt.y = clientY;
+      try { return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+      catch (e) { return null; }
+    }
+    function zoomAt(clientX, clientY, factor) {
+      var v = svgPoint(clientX, clientY);
+      if (!v) return;
+      var ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+      var cx = (v.x - view.tx) / view.scale;
+      var cy = (v.y - view.ty) / view.scale;
+      view.tx = v.x - ns * cx;
+      view.ty = v.y - ns * cy;
+      view.scale = ns;
+      clampView();
+      applyView(true);
+    }
+
+    var panState = null;
+    function startPan(clientX, clientY) {
+      panState = { x: clientX, y: clientY, tx: view.tx, ty: view.ty, moved: false };
+    }
+    function movePan(clientX, clientY) {
+      if (!panState) return;
+      var dx = clientX - panState.x;
+      var dy = clientY - panState.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) panState.moved = true;
+      var svg = mapEl.querySelector("svg");
+      var rect = svg && svg.getBoundingClientRect ? svg.getBoundingClientRect() : null;
+      var k = rect && rect.width ? VIEW_W / rect.width : 1;
+      view.tx = panState.tx + dx * k;
+      view.ty = panState.ty + dy * k;
+      clampView();
+      applyView(true);
+    }
+    function endPan() { panState = null; }
+
+    var pinchPrev = null;
+    function touchDist(touches) {
+      if (touches.length < 2) return 0;
+      var a = touches[0], b = touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    }
+    function touchMid(touches) {
+      var a = touches[0], b = touches[1];
+      return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+    }
+
+    function drawMap() {
+      var list = filtered();
+      var provincePaths = provinces ? provinces.map(function (f) { return '<path class="trip-province" d="' + geometryPaths(f.geometry) + '"/>'; }).join("") : "";
+      var route = "";
+      if (list.length > 1) {
+        var d = "M";
+        for (var i = 0; i < list.length; i++) {
+          var p = project(list[i].lng, list[i].lat);
+          d += (i ? " L" : "") + p[0].toFixed(1) + " " + p[1].toFixed(1);
+        }
+        route = '<path class="trip-route" d="' + d + '"/>';
+      }
+      var nodes = list.map(nodeHTML).join("");
+      mapEl.innerHTML = '<svg viewBox="0 0 ' + VIEW_W + ' ' + VIEW_H + '" preserveAspectRatio="xMidYMid meet" aria-label="旅行轨迹地图">' +
+        '<g class="trip-map-layer">' + provincePaths + route + nodes + '</g></svg>';
+      mapEl.appendChild(popEl);
+      var active = activeId ? findTrip(activeId) : null;
+      if (list.indexOf(active) === -1) active = null;
+      focusTrip(active);
+    }
+
+    function updateDetail() {
+      var t = activeId ? findTrip(activeId) : null;
+      if (!t) {
+        detailEl.innerHTML = '<div class="trip-detail-empty">点击地图上的城市，或选择左侧时间轴，查看城市故事。</div>';
+        return;
+      }
+      var photos = (t.photos || []).slice(0, 3).map(function (p) {
+        return '<div class="trip-photo">' + (p && p.src ? '<img src="' + esc(p.src) + '" alt="' + esc(p.caption || "") + '">' : "📷") + '</div>';
+      }).join("");
+      var tags = (t.tags || []).map(function (x) { return '<span class="trip-tag">' + esc(x) + '</span>'; }).join("");
+      var rating = t.rating || {};
+      var rateRows = [
+        ["氛围感", rating.atmosphere], ["美食", rating.food], ["风景", rating.scenery], ["再来一次", rating.again]
+      ].map(function (r) { return '<div class="trip-rate-row"><span>' + r[0] + '</span><b>' + stars(r[1]) + '</b></div>'; }).join("");
+      var spots = (t.spots || []).join(" · ");
+      var meta = [
+        t.companions ? "同行：" + t.companions : "",
+        t.weather ? "天气：" + t.weather : "",
+        t.mood ? "心情：" + t.mood : ""
+      ].filter(Boolean).map(function (x) { return '<span>' + esc(x) + '</span>'; }).join("");
+
+      detailEl.innerHTML =
+        '<h2 class="trip-detail-city">' + esc(t.city || "") + '</h2>' +
+        '<p class="trip-detail-date">' + esc(fullDate(t)) + '</p>' +
+        '<blockquote class="trip-detail-quote">' + esc(t.quote || "") + '</blockquote>' +
+        '<p class="trip-detail-story">' + esc(t.story || "") + '</p>' +
+        '<div class="trip-detail-section"><h4>照片</h4><div class="trip-photos">' + (photos || "暂无照片") + '</div></div>' +
+        '<div class="trip-detail-section"><h4>标签</h4><div class="trip-detail-tags">' + (tags || "—") + '</div></div>' +
+        (spots ? '<div class="trip-detail-section"><h4>这次去过</h4><p class="trip-detail-story">' + esc(spots) + '</p></div>' : "") +
+        '<div class="trip-detail-section"><h4>我的评分</h4><div class="trip-rating">' + rateRows + '</div></div>' +
+        (meta ? '<div class="trip-detail-section"><div class="trip-meta">' + meta + '</div></div>' : "");
+    }
+
+    function syncActive() {
+      var list = filtered();
+      var active = activeId ? findTrip(activeId) : null;
+      if (list.indexOf(active) === -1) { activeId = null; active = null; }
+      timelineEl.querySelectorAll(".trip-item").forEach(function (el) {
+        el.classList.toggle("active", el.getAttribute("data-trip") === activeId);
+      });
+      mapEl.querySelectorAll(".trip-node").forEach(function (el) {
+        el.classList.toggle("active", el.getAttribute("data-trip") === activeId);
+      });
+      focusTrip(active);
+      updateDetail();
+    }
+
+    function selectTrip(id) {
+      if (playing) return;
+      activeId = id;
+      syncActive();
+      if (mobileMQ.matches) {
+        setPanelCollapsed("left", true);
+        setPanelCollapsed("right", false);
+      }
+      var item = timelineEl.querySelector('.trip-item[data-trip="' + id + '"]');
+      if (item && item.scrollIntoView) item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    function selectYear(y) {
+      if (playing) togglePlay();
+      year = y;
+      activeId = null;
+      renderFilters();
+      renderTimeline();
+      renderStats();
+      drawMap();
+      updateDetail();
+    }
+
+    function togglePlay() {
+      if (playing) {
+        playing = false;
+        clearInterval(playTimer);
+        playBtn.textContent = "▶ 播放我的旅程";
+        playBtn.classList.remove("playing");
+        playBtn.setAttribute("aria-pressed", "false");
+        return;
+      }
+      var list = filtered();
+      if (!list.length) return;
+      playing = true;
+      playBtn.textContent = "⏸ 暂停";
+      playBtn.classList.add("playing");
+      playBtn.setAttribute("aria-pressed", "true");
+      var i = list.findIndex(function (t) { return t.id === activeId; });
+      if (i < 0) i = -1;
+      playTimer = setInterval(function () {
+        i = (i + 1) % list.length;
+        activeId = list[i].id;
+        syncActive();
+        var item = timelineEl.querySelector('.trip-item[data-trip="' + activeId + '"]');
+        if (item && item.scrollIntoView) item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }, 1600);
+    }
+
+    timelineEl.addEventListener("click", function (e) {
+      var item = e.target.closest(".trip-item");
+      if (item) selectTrip(item.getAttribute("data-trip"));
+    });
+    filtersEl.addEventListener("click", function (e) {
+      var btn = e.target.closest(".trip-filter");
+      if (btn) selectYear(btn.getAttribute("data-year"));
+    });
+    playBtn.addEventListener("click", togglePlay);
+    mapEl.addEventListener("click", function (e) {
+      var node = e.target.closest(".trip-node");
+      if (node) selectTrip(node.getAttribute("data-trip"));
+    });
+    mapEl.addEventListener("mouseover", function (e) {
+      if (panState) return;
+      var node = e.target.closest(".trip-node");
+      if (!node) return;
+      var t = findTrip(node.getAttribute("data-trip"));
+      if (!t) return;
+      var dot = node.querySelector(".node-dot");
+      if (!dot) return;
+      var r = dot.getBoundingClientRect();
+      var mr = mapEl.getBoundingClientRect();
+      popEl.innerHTML = '<b>' + esc(t.city || "") + '</b><time>' + esc(fullDate(t)) + '</time><p>' + esc(t.quote || "") + '</p>';
+      popEl.style.left = Math.min(r.left - mr.left + 14, mapEl.clientWidth - 224) + "px";
+      popEl.style.top = Math.max(r.top - mr.top - 12, 8) + "px";
+      popEl.classList.add("show");
+    });
+    mapEl.addEventListener("mouseout", function (e) {
+      var node = e.target.closest(".trip-node");
+      if (node && !node.contains(e.relatedTarget)) popEl.classList.remove("show");
+    });
+
+    /* 滚轮自由缩放 */
+    mapEl.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    /* 鼠标拖拽平移 */
+    mapEl.addEventListener("mousedown", function (e) {
+      if (e.target.closest(".trip-node")) return;
+      startPan(e.clientX, e.clientY);
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (panState) movePan(e.clientX, e.clientY);
+    });
+    document.addEventListener("mouseup", function () { endPan(); });
+
+    /* 触摸：单指平移、双指缩放 */
+    mapEl.addEventListener("touchstart", function (e) {
+      if (e.touches.length === 1 && !e.target.closest(".trip-node")) {
+        startPan(e.touches[0].clientX, e.touches[0].clientY);
+      } else if (e.touches.length === 2) {
+        endPan();
+        pinchPrev = touchDist(e.touches);
+      }
+    }, { passive: true });
+    mapEl.addEventListener("touchmove", function (e) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        var d = touchDist(e.touches);
+        var mid = touchMid(e.touches);
+        if (pinchPrev && d > 0) zoomAt(mid.x, mid.y, d / pinchPrev);
+        pinchPrev = d;
+      } else if (e.touches.length === 1 && panState) {
+        e.preventDefault();
+        movePan(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: false });
+    mapEl.addEventListener("touchend", function (e) {
+      if (e.touches.length < 2) pinchPrev = null;
+      if (e.touches.length === 0) endPan();
+    });
+
+    /* 左右面板收起/展开控制 */
+    leftToggle.addEventListener("click", function () { setPanelCollapsed("left", !isPanelCollapsed("left")); });
+    rightToggle.addEventListener("click", function () { setPanelCollapsed("right", !isPanelCollapsed("right")); });
+    if (timelineClose) timelineClose.addEventListener("click", function () { setPanelCollapsed("left", true); });
+    if (detailClose) detailClose.addEventListener("click", function () { setPanelCollapsed("right", true); });
+    if (backdrop) backdrop.addEventListener("click", function () {
+      setPanelCollapsed("left", true);
+      setPanelCollapsed("right", true);
+    });
+    setPanelCollapsed("left", mobileMQ.matches);
+    setPanelCollapsed("right", mobileMQ.matches);
+
+    renderFilters();
+    renderTimeline();
+    renderStats();
+    drawMap();
+    updateDetail();
+
+    fetch("assets/china-provinces.json", { cache: "default" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (geo) {
+        provinces = (geo && geo.features) || [];
+        drawMap();
+      })
+      .catch(function () { /* 底图加载失败则只显示轨迹与节点 */ });
   }
 
   function renderMessages() {
@@ -484,7 +824,7 @@
     else if (PAGE === "projects") renderProjects();
     else if (PAGE === "gallery") renderGallery();
     else if (PAGE === "contact") renderContact();
-    else if (PAGE === "cities") renderCities();
+    else if (PAGE === "cities") renderTrips();
 
     var pageTitle;
     if (PAGE === "index") {
@@ -498,7 +838,7 @@
       else if (PAGE === "projects") base = "项目作品";
       else if (PAGE === "gallery") base = "生活瞬间";
       else if (PAGE === "contact") base = (DB.contact.title || "联系我们");
-      else if (PAGE === "cities") base = "走过的城市";
+      else if (PAGE === "cities") base = "我的足迹";
       pageTitle = base + " · " + (DB.site.name || "");
     }
     document.title = pageTitle;

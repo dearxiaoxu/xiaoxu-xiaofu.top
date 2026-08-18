@@ -25,7 +25,7 @@ const DB_FILE = path.join(DATA_DIR, "site.db");
 const LEGACY_FILE = path.join(DATA_DIR, "db.json");
 
 const CONTENT_OBJECT_KEYS = ["site", "hero", "about", "contact"];
-const CONTENT_ARRAY_KEYS = ["posts", "projects", "gallery", "cities"];
+const CONTENT_ARRAY_KEYS = ["posts", "projects", "gallery", "cities", "trips"];
 
 function defaultContent() {
   const obj = {};
@@ -83,6 +83,45 @@ function defaultCities() {
   });
 }
 
+function defaultTrips() {
+  // 旅行记录种子（示例/占位数据，可在后台自由编辑）。
+  // 坐标与 cities 种子保持一致，便于地图轨迹与城市节点对齐。
+  const raw = [
+    ["t1", "beijing", "北京", 116.4074, 39.9042, "2024-03-15", "2024-03-18", "第一次两个人一起看升旗，北京比想象中更庄重。", ["故宫", "长城", "胡同"], "第一次凌晨起来看升旗，风很大，人很多，但国旗升起那一刻什么都值了。", ["故宫", "长城", "南锣鼓巷"], "朋友", "★★★★★", "晴"],
+    ["t2", "xian", "西安", 108.9398, 34.3416, "2024-04-02", "2024-04-05", "在城墙上骑了一下午车，忽然觉得时间可以很慢。", ["兵马俑", "城墙", "回民街"], "兵马俑比课本上壮观太多，回民街从街头吃到街尾。", ["兵马俑", "西安城墙", "回民街"], "朋友", "★★★★☆", "多云"],
+    ["t3", "chengdu", "成都", 104.0668, 30.5728, "2024-04-10", "2024-04-13", "第一次真正感受到一座城市的松弛感。", ["火锅", "太古里", "宽窄巷子"], "在成都的几天，每天都不知道该去哪，但又觉得哪里都值得去。第一次一个人在凌晨吃火锅，也第一次真正理解什么叫慢下来。", ["春熙路", "太古里", "宽窄巷子", "锦江夜游"], "独自", "★★★★★", "小雨"],
+    ["t4", "changsha", "长沙", 112.9388, 28.2282, "2024-04-20", "2024-04-22", "为了茶颜悦色排的队，最后被湘菜彻底征服。", ["橘子洲", "岳麓山", "文和友"], "橘子洲头的风很舒服，岳麓山的台阶比想象中长，湘菜辣得让人上瘾。", ["橘子洲", "岳麓山", "超级文和友"], "朋友", "★★★★☆", "晴"],
+    ["t5", "shanghai", "上海", 121.4737, 31.2304, "2024-05-01", "2024-05-03", "外滩的灯亮起来的时候，觉得这座城市真的很大。", ["外滩", "迪士尼", "陆家嘴"], "在外滩吹着风看对岸陆家嘴，第二天在迪士尼排队排到腿软，但烟花亮起来的时候一切都值了。", ["外滩", "迪士尼", "陆家嘴"], "朋友", "★★★★☆", "晴"],
+    ["t6", "xiamen", "厦门", 118.0894, 24.4798, "2024-05-20", "2024-05-23", "在海边骑单车，空气里都是咸咸的夏天。", ["鼓浪屿", "环岛路", "沙坡尾"], "鼓浪屿的小巷怎么走都好看，环岛路一路都是海风，沙坡尾藏着很多小惊喜。", ["鼓浪屿", "环岛路", "沙坡尾"], "独自", "★★★★☆", "晴"],
+    ["t7", "guangzhou", "广州", 113.2644, 23.1291, "2024-06-05", "2024-06-08", "从早茶到夜宵，一天可以吃八顿。", ["早茶", "珠江夜游", "沙面"], "早茶的虾饺和肠粉让人想定居，夜晚的珠江两岸亮得像一幅画。", ["点都德", "珠江夜游", "沙面"], "朋友", "★★★★★", "阵雨"],
+    ["t8", "sanya", "三亚", 109.5119, 18.2528, "2024-06-18", "2024-06-22", "第一次见到那么蓝的海，像把整个夏天都装进了眼睛里。", ["亚龙湾", "蜈支洲岛", "椰梦长廊"], "在海边住了几天，每天就是看海、踩水、吃椰子，什么都不用想。", ["亚龙湾", "蜈支洲岛", "椰梦长廊"], "朋友", "★★★★★", "晴"]
+  ];
+  return raw.map(function (c) {
+    return {
+      id: c[0],
+      cityId: c[1],
+      city: c[2],
+      lng: c[3],
+      lat: c[4],
+      start: c[5],
+      end: c[6],
+      quote: c[7],
+      tags: c[8],
+      story: c[9],
+      spots: c[10],
+      companions: c[11],
+      mood: c[12],
+      weather: c[13],
+      rating: { atmosphere: 5, food: 5, scenery: 4, again: 5 },
+      photos: [
+        { src: "", caption: c[10][0] },
+        { src: "", caption: c[10][1] },
+        { src: "", caption: c[10][2] }
+      ]
+    };
+  });
+}
+
 let db = null;
 
 function open() {
@@ -106,6 +145,7 @@ function open() {
   `);
   migrate();
   ensureCities();
+  ensureTrips();
   return db;
 }
 
@@ -117,6 +157,17 @@ function ensureCities() {
   try { content = JSON.parse(row.data); } catch (e) { return; }
   if (!Array.isArray(content.cities) || content.cities.length === 0) {
     content.cities = defaultCities();
+    db.prepare("UPDATE content SET data = ? WHERE id = 1").run(JSON.stringify(content));
+  }
+}
+
+function ensureTrips() {
+  const row = db.prepare("SELECT data FROM content WHERE id = 1").get();
+  if (!row) return;
+  let content;
+  try { content = JSON.parse(row.data); } catch (e) { return; }
+  if (!Array.isArray(content.trips) || content.trips.length === 0) {
+    content.trips = defaultTrips();
     db.prepare("UPDATE content SET data = ? WHERE id = 1").run(JSON.stringify(content));
   }
 }
@@ -190,6 +241,7 @@ function saveContent(obj) {
   });
   // 城市列表是种子数据，缺省时保留已有内容，避免旧备份/部分保存把它清空。
   if (!Array.isArray(obj.cities)) content.cities = readExistingCities();
+  if (!Array.isArray(obj.trips)) content.trips = readExistingTrips();
   const messages = Array.isArray(obj.messages) ? obj.messages : [];
 
   db.exec("BEGIN");
@@ -223,6 +275,17 @@ function readExistingCities() {
     }
   } catch (e) { /* 忽略 */ }
   return defaultCities();
+}
+
+function readExistingTrips() {
+  try {
+    const row = db.prepare("SELECT data FROM content WHERE id = 1").get();
+    if (row) {
+      const old = JSON.parse(row.data);
+      if (Array.isArray(old.trips) && old.trips.length) return old.trips;
+    }
+  } catch (e) { /* 忽略 */ }
+  return defaultTrips();
 }
 
 function addMessage(msg) {
