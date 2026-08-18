@@ -243,9 +243,14 @@ function isForbiddenPath(p) {
 function attr(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+function replaceAttr(html, re, name, value) {
+  if (value === undefined || value === null) return html;
+  return html.replace(re, function (m) {
+    return m.replace(new RegExp(name + '="[^"]*"'), name + '="' + attr(value) + '"');
+  });
+}
 function replaceMeta(html, re, content) {
-  if (content === undefined || content === null) return html;
-  return html.replace(re, function (m) { return m.replace(/content="[^"]*"/, 'content="' + attr(content) + '"'); });
+  return replaceAttr(html, re, "content", content);
 }
 function injectMeta(html, meta) {
   let out = html;
@@ -254,7 +259,7 @@ function injectMeta(html, meta) {
   out = replaceMeta(out, /<meta property="og:title"[^>]*>/, meta.ogTitle);
   out = replaceMeta(out, /<meta property="og:description"[^>]*>/, meta.ogDescription);
   out = replaceMeta(out, /<meta property="og:url"[^>]*>/, meta.ogUrl);
-  out = replaceMeta(out, /<link rel="canonical"[^>]*>/, meta.canonical);
+  out = replaceAttr(out, /<link rel="canonical"[^>]*>/, "href", meta.canonical);
   if (meta.ogImage) {
     out = out.replace(/<meta property="og:image"[^>]*>\s*/g, "");
     out = out.replace(/<meta property="og:image:(width|height)"[^>]*>\s*/g, "");
@@ -310,6 +315,29 @@ function routeMeta(req, pathname) {
     meta.canonical = meta.ogUrl;
   }
   return meta;
+}
+
+function imageHeaderMatches(ext, buf) {
+  if (!buf || buf.length < 4) return false;
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (ext === ".png") {
+    return buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  if (ext === ".gif") {
+    return buf.toString("ascii", 0, 6) === "GIF87a" || buf.toString("ascii", 0, 6) === "GIF89a";
+  }
+  if (ext === ".webp") {
+    return buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+  }
+  if (ext === ".avif") {
+    return buf.length >= 12 && buf.toString("ascii", 4, 8) === "ftyp" && /avif|avis/.test(buf.toString("ascii", 8, Math.min(buf.length, 64)));
+  }
+  if (ext === ".ico") {
+    return buf[0] === 0 && buf[1] === 0 && buf[2] === 1 && buf[3] === 0;
+  }
+  return false;
 }
 
 /* ---------- 静态文件 ---------- */
@@ -477,6 +505,14 @@ async function handleAPI(req, res, pathname) {
     }
     const buf = Buffer.from(data, "base64");
     if (buf.length === 0) return sendJSON(res, 400, { error: "base64 解码失败" });
+    if (buf.length > 8 * 1024 * 1024) {
+      log("ADMIN", "图片上传被拒绝（实际大小超限） ip=" + ip + " 文件=" + name);
+      return sendJSON(res, 400, { error: "图片数据过大（≤8MB）" });
+    }
+    if (!imageHeaderMatches(ext, buf)) {
+      log("ADMIN", "图片上传被拒绝（文件头与扩展名不匹配） ip=" + ip + " 文件=" + name);
+      return sendJSON(res, 400, { error: "图片内容与扩展名不匹配" });
+    }
     const finalName = Date.now() + "-" + name;
     fs.writeFileSync(path.join(UPLOAD_DIR, finalName), buf);
     log("ADMIN", "图片上传成功 ip=" + ip + " 文件=" + finalName + " 大小=" + (buf.length / 1024).toFixed(0) + "KB");
@@ -564,6 +600,19 @@ async function handleAPI(req, res, pathname) {
       postId: postId, name: name, text: text, time: Date.now()
     });
     log("MSG", "新评论 ip=" + ip + " 文章=" + postId + " 昵称=" + name + " 长度=" + text.length);
+    return sendJSON(res, 200, { ok: true, pending: true });
+  }
+
+  if (pathname === "/api/comments" && req.method === "PUT") {
+    if (!authOk(req)) return sendJSON(res, 401, { error: "unauthorized" });
+    const id = new URL(req.url, "http://x").searchParams.get("id");
+    if (!id) return sendJSON(res, 400, { error: "缺少评论 id" });
+    let body;
+    try { body = JSON.parse(await readBody(req, 1024)); } catch (e) { body = {}; }
+    const status = ["pending", "approved", "rejected"].includes(String(body.status)) ? String(body.status) : "";
+    if (!status) return sendJSON(res, 400, { error: "无效的评论状态" });
+    if (!store.setCommentStatus(id, status)) return sendJSON(res, 404, { error: "评论不存在" });
+    log("ADMIN", "评论状态已更新 id=" + id + " status=" + status + " ip=" + clientIp(req));
     return sendJSON(res, 200, { ok: true });
   }
 

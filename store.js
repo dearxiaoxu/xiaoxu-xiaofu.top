@@ -147,10 +147,16 @@ function open() {
       post_id TEXT NOT NULL,
       name TEXT NOT NULL,
       text TEXT NOT NULL,
-      time INTEGER NOT NULL
+      time INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'approved'
     );
     CREATE INDEX IF NOT EXISTS idx_comments_post ON comments (post_id, time);
   `);
+  const commentColumns = db.prepare("PRAGMA table_info(comments)").all();
+  if (!commentColumns.some(function (c) { return c.name === "status"; })) {
+    // 旧版本评论没有审核字段，历史内容保持可见；新写入评论由 addComment 标为 pending。
+    db.exec("ALTER TABLE comments ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'");
+  }
   migrate();
   ensureCities();
   ensureTrips();
@@ -315,11 +321,11 @@ function addMessage(msg) {
 function getComments(postId) {
   if (postId) {
     return db.prepare(
-      "SELECT id, post_id AS postId, name, text, time FROM comments WHERE post_id = ? ORDER BY time ASC, rowid ASC"
+      "SELECT id, post_id AS postId, name, text, time FROM comments WHERE post_id = ? AND status = 'approved' ORDER BY time ASC, rowid ASC"
     ).all(String(postId));
   }
   return db.prepare(
-    "SELECT id, post_id AS postId, name, text, time FROM comments ORDER BY time DESC, rowid DESC"
+    "SELECT id, post_id AS postId, name, text, time, status FROM comments ORDER BY time DESC, rowid DESC"
   ).all();
 }
 
@@ -327,7 +333,7 @@ function addComment(c) {
   const postId = String(c.postId);
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO comments (id, post_id, name, text, time) VALUES (?, ?, ?, ?, ?)")
+    db.prepare("INSERT INTO comments (id, post_id, name, text, time, status) VALUES (?, ?, ?, ?, ?, 'pending')")
       .run(String(c.id), postId, String(c.name), String(c.text), Number(c.time));
     // 每篇文章最多保留 200 条评论（与留言板策略一致）
     const del = db.prepare(
@@ -345,6 +351,13 @@ function deleteComment(id) {
   db.prepare("DELETE FROM comments WHERE id = ?").run(String(id));
 }
 
+function setCommentStatus(id, status) {
+  const row = db.prepare("SELECT id FROM comments WHERE id = ?").get(String(id));
+  if (!row) return false;
+  db.prepare("UPDATE comments SET status = ? WHERE id = ?").run(String(status), String(id));
+  return true;
+}
+
 function close() {
   if (db) {
     try { db.close(); } catch (e) { /* 忽略 */ }
@@ -352,4 +365,4 @@ function close() {
   }
 }
 
-module.exports = { open, getContent, saveContent, addMessage, getComments, addComment, deleteComment, close };
+module.exports = { open, getContent, saveContent, addMessage, getComments, addComment, setCommentStatus, deleteComment, close };

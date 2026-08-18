@@ -1058,10 +1058,14 @@
       box.innerHTML = adminComments.map(function (c) {
         var d = new Date(c.time || Date.now());
         var ts = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        var status = c.status === 'approved' ? '<span class="comment-status approved">已发布</span>' :
+          c.status === 'rejected' ? '<span class="comment-status rejected">已拒绝</span>' :
+          '<span class="comment-status pending">待审核</span>';
+        var approve = c.status === 'approved' ? '' : '<button class="btn btn-sm btn-ghost" data-action="approve-comment" data-id="' + esc(c.id) + '">通过</button>';
         return '<div class="admin-comment-row">' +
           '<div class="ac-main"><p class="ac-text">' + esc(c.text) + '</p>' +
-          '<p class="f-hint">' + esc(c.name || '匿名') + ' · ' + ts + ' · 文章 ' + esc(c.postId) + '</p></div>' +
-          '<button class="btn btn-sm btn-ghost" data-action="del-comment" data-id="' + esc(c.id) + '">删除</button>' +
+          '<p class="f-hint">' + esc(c.name || '匿名') + ' · ' + ts + ' · 文章 ' + esc(c.postId) + ' · ' + status + '</p></div>' +
+          '<div class="row-actions">' + approve + '<button class="btn btn-sm btn-ghost" data-action="del-comment" data-id="' + esc(c.id) + '">删除</button></div>' +
           '</div>';
       }).join('');
     }).catch(function (err) {
@@ -1072,7 +1076,7 @@
   function renderComments() {
     setTimeout(loadCommentsAdmin, 0);
     return section('文章评论管理', [
-      '<p class="f-hint">访客在文章页发表的评论都在这里，删除立即生效。</p>',
+      '<p class="f-hint">新评论默认待审核，通过后才会显示在文章页；删除立即生效。</p>',
       '<div id="comments-box">加载中…</div>'
     ].join(''));
   }
@@ -1082,6 +1086,12 @@
     api('/api/comments?id=' + encodeURIComponent(id), { method: 'DELETE' })
       .then(function () { toast('已删除', 'ok'); loadCommentsAdmin(); })
       .catch(function (err) { if (err.status !== 401) toast('删除失败：' + (err.message || ''), 'err'); });
+  }
+
+  function approveComment(id) {
+    api('/api/comments?id=' + encodeURIComponent(id), { method: 'PUT', body: { status: 'approved' } })
+      .then(function () { toast('评论已发布', 'ok'); loadCommentsAdmin(); })
+      .catch(function (err) { if (err.status !== 401) toast('审核失败：' + (err.message || ''), 'err'); });
   }
 
   var renderers = {
@@ -1597,6 +1607,9 @@
         break;
       case 'del-comment':
         delComment(el.dataset.id);
+        break;
+      case 'approve-comment':
+        approveComment(el.dataset.id);
         break;
       /* import 走 change 事件，不在此处理 */
     }

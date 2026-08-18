@@ -729,3 +729,7 @@ input, textarea, select { font-family: inherit; font-size: 0.95rem; color: var(-
   background: var(--card, #fff);
 }
 .ac-text { font-size: 0.92rem; color: var(--ink, #26211a); margin-bottom: 4px; white-space: pre-wrap; }
+.comment-status { font-size: 0.78rem; }
+.comment-status.approved { color: #3d8b57; }
+.comment-status.pending { color: #b47719; }
+.comment-status.rejected { color: #b14a42; }

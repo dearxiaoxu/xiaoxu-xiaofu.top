@@ -309,8 +309,8 @@
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (d.ok) {
           form.reset();
-          if (note) note.textContent = "评论成功 🎉";
-          loadPostComments(postId);
+          if (note) note.textContent = d.pending ? "评论已提交，审核通过后会显示" : "评论成功 🎉";
+          if (!d.pending) loadPostComments(postId);
         } else if (d.error) {
           if (note) note.textContent = d.error;
         }

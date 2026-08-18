@@ -55,7 +55,7 @@ npm start
 
 ## 新增能力（整改 P0）
 
-- **文章级评论**：每篇文章可评论（防刷限频 + 蜜罐 + 转义），后台「评论管理」可删除
+- **文章级评论**：每篇文章可评论（防刷限频 + 蜜罐 + 转义），新评论默认待审核，后台可通过/删除
 - **社交分享图**：全站 og:image 服务端注入（1200×630），后台「站点设置」可上传自定义分享图
 - **SEO**：`/robots.txt` + `/sitemap.xml` 动态生成，文章页 title/description 服务端注入（爬虫可抓）
 - **访问统计**：自研 PV/UV/热帖 TOP5，仅后台「数据与安全」可见，前台零痕迹；`/api/counter` 提供公开总访问量
@@ -73,6 +73,7 @@ npm start
 | POST | `/api/messages` | 访客留言 `{"name","text"}`（带频率限制与蜜罐） |
 | GET | `/api/comments?postId=` | 文章评论列表（公开） |
 | POST | `/api/comments` | 发表评论 `{"postId","name","text"}`（限频+蜜罐） |
+| PUT | `/api/comments?id=` | 审核评论 `{"status":"approved|pending|rejected"}`（需 token） |
 | GET/DELETE | `/api/comments` | 全量评论 / 删除评论（需 token） |
 | GET | `/api/stats` | 访问统计 PV/UV/热帖（需 token） |
 | GET | `/api/counter` | 公开总访问量 `{"pv"}` |
