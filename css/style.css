@@ -1309,77 +1309,60 @@ ul, ol { list-style: none; }
   font-weight: 700;
 }
 
-/* ---------- 城市地图 ---------- */
+/* ---------- 城市地图（天地图） ---------- */
 .city-map-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
   align-items: start;
 }
-.city-map-card { padding: 18px; }
-.city-map-head {
-  display: flex;
-  gap: 16px;
-  justify-content: flex-end;
-  margin-bottom: 10px;
+.city-map-card {
+  padding: 14px;
+  background: linear-gradient(160deg, #171410, #221c15);
+  border: 1px solid rgba(250, 137, 82, 0.2);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
 }
-.legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--ink-2);
-}
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ink-3);
-}
-.legend-dot.visited { background: var(--accent); box-shadow: var(--glow); }
-
 .city-map {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  background:
-    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 68%),
-    var(--bg-soft);
+  height: min(72vh, 580px);
+  min-height: 360px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
   overflow: hidden;
+  background: #10181f;
+  box-shadow: inset 0 0 0 1px rgba(250, 137, 82, 0.12), 0 18px 50px rgba(0, 0, 0, 0.42);
 }
-.city-map-inner { position: absolute; inset: 0; }
-.city-dot {
+.city-map .tdt-control-zoom,
+.city-map .tdt-control-scale {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+.city-map-fallback {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: none;
-  background: var(--ink-3);
-  cursor: default;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--ink-2);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(250, 137, 82, 0.16), transparent 62%),
+    linear-gradient(160deg, #0f1720, #181410);
 }
-.city-dot.visited {
-  width: 14px;
-  height: 14px;
-  background: var(--accent);
-  cursor: pointer;
-  box-shadow: var(--glow);
-  animation: city-pulse 2.2s ease-in-out infinite;
-}
-.city-dot.visited:hover { transform: translate(-50%, -50%) scale(1.35); }
-@keyframes city-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent), var(--glow); }
-  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent), var(--glow); }
-}
+.tianditu-info { font-size: 0.85rem; line-height: 1.55; color: #2f241b; }
+.tianditu-info b { display: block; margin-bottom: 4px; font-size: 0.95rem; }
+.tianditu-info p { margin: 0; white-space: pre-wrap; }
 
 .city-memory-panel { padding: 22px; min-height: 200px; }
 .city-memory-empty { text-align: center; color: var(--ink-3); padding: 22px 0; }
 .city-memory-empty b { color: var(--ink); font-family: var(--font-serif); font-size: 1.05rem; }
 .city-memory-panel h3 { font-family: var(--font-serif); font-size: 1.35rem; }
 .city-memory-text { color: var(--ink-2); margin-top: 10px; white-space: pre-wrap; }
+.city-memory-meta { margin-top: 12px; font-size: 0.78rem; letter-spacing: 0.04em; color: var(--accent); }
 
 @media (max-width: 860px) {
   .city-map-layout { grid-template-columns: 1fr; }
+  .city-map { height: min(60vh, 460px); min-height: 320px; }
 }

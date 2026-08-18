@@ -43,6 +43,19 @@
   var DB = null;
   var PAGE = document.body.getAttribute("data-page") || "index";
 
+  /* 城市 id → 行政区划编码（对应 assets/boundaries/{adcode}.json，坐标已转为 WGS84） */
+  var CITY_ADCODES = {
+    "beijing": "110000", "tianjin": "120000", "shijiazhuang": "130100", "taiyuan": "140100",
+    "hohhot": "150100", "shenyang": "210100", "dalian": "210200", "changchun": "220100",
+    "harbin": "230100", "shanghai": "310000", "nanjing": "320100", "suzhou": "320500",
+    "hangzhou": "330100", "hefei": "340100", "fuzhou": "350100", "xiamen": "350200",
+    "jinan": "370100", "qingdao": "370200", "zhengzhou": "410100", "wuhan": "420100",
+    "changsha": "430100", "guangzhou": "440100", "shenzhen": "440300", "nanning": "450100",
+    "haikou": "460100", "sanya": "460200", "chengdu": "510100", "chongqing": "500000",
+    "guiyang": "520100", "kunming": "530100", "lhasa": "540100", "xian": "610100",
+    "lanzhou": "620100", "xining": "630100", "yinchuan": "640100", "urumqi": "650100"
+  };
+
   /* ---------- 公共片段 ---------- */
   function galleryItemHTML(g, extra) {
     extra = extra || "";
@@ -266,32 +279,116 @@
     var panel = $("city-memory");
     if (!map) return;
 
-    var visitedCount = cities.filter(function (c) { return c.visited; }).length;
+    var visited = cities.filter(function (c) { return c.visited; });
+    if (panel) {
+      panel.innerHTML = '<div class="city-memory-empty"><b>👣 一起走过 ' + visited.length + ' 座城市</b><p>地图上点亮的轮廓，是我们一起走过的城市。点击轮廓或圆点看看记忆。</p></div>';
+    }
 
-    var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    cities.forEach(function (c) {
-      if (c.lat < minLat) minLat = c.lat;
-      if (c.lat > maxLat) maxLat = c.lat;
-      if (c.lng < minLng) minLng = c.lng;
-      if (c.lng > maxLng) maxLng = c.lng;
-    });
-    if (!isFinite(minLat)) {
-      map.innerHTML = '<p class="muted" style="text-align:center;padding:40px;">还没有城市数据，去后台添加吧～</p>';
+    if (!window.T || !window.T.Map) {
+      map.innerHTML = '<div class="city-map-fallback"><p>地图正在加载中，请确认网络可以访问天地图服务。</p></div>';
       return;
     }
-    var padLat = (maxLat - minLat) * 0.08 || 1;
-    var padLng = (maxLng - minLng) * 0.06 || 1;
-    minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
 
-    var dots = cities.map(function (c) {
-      var x = ((c.lng - minLng) / (maxLng - minLng)) * 100;
-      var y = ((maxLat - c.lat) / (maxLat - minLat)) * 100;
-      return '<button class="city-dot' + (c.visited ? " visited" : "") + '" style="left:' + x.toFixed(3) + '%;top:' + y.toFixed(3) + '%" data-name="' + esc(c.name) + '" data-memory="' + esc(c.memory || "") + '" data-visited="' + (c.visited ? "1" : "0") + '" title="' + esc(c.name) + '" aria-label="' + esc(c.name) + '"></button>';
-    }).join("");
+    try {
+      var tmap = new window.T.Map(map.id);
+      tmap.centerAndZoom(new window.T.LngLat(104.0, 35.0), 4);
+      if (window.T.Control && window.T.Control.Zoom) tmap.addControl(new window.T.Control.Zoom());
+      if (window.T.Control && window.T.Control.Scale) tmap.addControl(new window.T.Control.Scale());
 
-    map.innerHTML = '<div class="city-map-inner">' + dots + '</div>';
-    if (panel) {
-      panel.innerHTML = '<div class="city-memory-empty"><b>👣 一起走过 ' + visitedCount + ' 座城市</b><p>点击点亮的城市，看看我们留在那里的记忆。</p></div>';
+      var dotIconUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
+        '<circle cx="6" cy="6" r="3.4" fill="#FA8952" stroke="#FFE0B0" stroke-width="1.2" opacity="0.95"/>' +
+        '</svg>'
+      );
+
+      function showCity(c) {
+        if (!panel) return;
+        panel.innerHTML = '<h3>' + esc(c.name) + '</h3>' +
+          '<p class="city-memory-text">' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p>' +
+          '<p class="city-memory-meta">已点亮 · 一起走过</p>';
+      }
+
+      function cityInfo(c) {
+        var html = '<div class="tianditu-info"><b>' + esc(c.name) + '</b>' +
+          '<p>' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p></div>';
+        return new window.T.InfoWindow(html, { width: 240, height: 110, title: c.name });
+      }
+
+      function addCenterDot(c) {
+        var marker;
+        try {
+          var icon = new window.T.Icon({
+            iconUrl: dotIconUrl,
+            iconSize: new window.T.Point(12, 12),
+            iconAnchor: new window.T.Point(6, 6)
+          });
+          marker = new window.T.Marker(new window.T.LngLat(c.lng, c.lat), { icon: icon });
+        } catch (e) {
+          marker = new window.T.Marker(new window.T.LngLat(c.lng, c.lat));
+        }
+        marker.addEventListener("click", function () {
+          showCity(c);
+          try { marker.openInfoWindow(cityInfo(c)); } catch (e) { /* 忽略 */ }
+        });
+        tmap.addOverLay(marker);
+        return marker;
+      }
+
+      function ringToPoints(ring) {
+        var pts = [];
+        for (var i = 0; i < ring.length; i++) {
+          var p = ring[i];
+          if (p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1])) {
+            pts.push(new window.T.LngLat(p[0], p[1]));
+          }
+        }
+        return pts;
+      }
+
+      function drawBoundary(geometry, c, marker) {
+        if (!geometry || !Array.isArray(geometry.coordinates)) return;
+        var rings = [];
+        if (geometry.type === "Polygon") rings = geometry.coordinates;
+        else if (geometry.type === "MultiPolygon") {
+          geometry.coordinates.forEach(function (poly) {
+            poly.forEach(function (r) { rings.push(r); });
+          });
+        }
+        rings.forEach(function (ring) {
+          var pts = ringToPoints(ring);
+          if (pts.length < 3) return;
+          var area = new window.T.Polygon(pts, {
+            strokeColor: "#FFD9A8",
+            strokeWeight: 2,
+            strokeOpacity: 0.95,
+            fillColor: "#FA8952",
+            fillOpacity: 0.18
+          });
+          area.addEventListener("click", function () {
+            showCity(c);
+            if (marker) { try { marker.openInfoWindow(cityInfo(c)); } catch (e) { /* 忽略 */ } }
+          });
+          tmap.addOverLay(area);
+        });
+      }
+
+      function loadCity(c) {
+        var marker = addCenterDot(c);
+        var adcode = CITY_ADCODES[c.id];
+        if (!adcode) return;
+        fetch("assets/boundaries/" + adcode + ".json", { cache: "default" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (d) { drawBoundary(d.geometry, c, marker); })
+          .catch(function () { /* 轮廓加载失败时保留中心圆点 */ });
+      }
+
+      visited.forEach(loadCity);
+    } catch (err) {
+      console.error("天地图初始化失败:", err);
+      map.innerHTML = '<div class="city-map-fallback"><p>地图暂时不可用，请稍后刷新重试。</p></div>';
     }
   }
 

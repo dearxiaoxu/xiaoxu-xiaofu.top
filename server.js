@@ -17,6 +17,7 @@ const ADMIN_FILE = path.join(DATA_DIR, "admin.json");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const LOG_DIR = path.join(DATA_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "site.log");
+const BOUNDARY_DIR = path.join(ROOT, "assets", "boundaries");
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
@@ -234,10 +235,13 @@ function serveStatic(req, res, pathname) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
+    const cacheControl = filePath.startsWith(BOUNDARY_DIR + path.sep)
+      ? "public, max-age=31536000, immutable"
+      : (ext === ".html" || ext === ".js" || ext === ".css" || ext === ".svg" || ext === ".json") ? "no-store" : "public, max-age=86400";
     res.writeHead(200, {
       "Content-Type": MIME[ext] || "application/octet-stream",
       "X-Content-Type-Options": "nosniff",
-      "Cache-Control": (ext === ".html" || ext === ".js" || ext === ".css" || ext === ".svg" || ext === ".json") ? "no-cache" : "public, max-age=86400",
+      "Cache-Control": cacheControl,
     });
     fs.createReadStream(filePath).pipe(res);
   });

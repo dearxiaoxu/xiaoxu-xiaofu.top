@@ -330,29 +330,6 @@
     });
   }
 
-  /* ---------- 城市地图：点击点亮城市查看记忆 ---------- */
-  function initCityDots() {
-    var map = document.querySelector("#city-map");
-    var panel = document.getElementById("city-memory");
-    if (!map || map.getAttribute("data-city-done")) return;
-    map.setAttribute("data-city-done", "1");
-    map.addEventListener("click", function (e) {
-      var dot = e.target.closest(".city-dot");
-      if (!dot || !panel) return;
-      var name = dot.getAttribute("data-name") || "";
-      var memory = dot.getAttribute("data-memory") || "";
-      var visited = dot.getAttribute("data-visited") === "1";
-      if (!visited) {
-        panel.innerHTML = '<div class="city-memory-empty"><b></b><p>这里还没留下脚印，期待下一次出发。</p></div>';
-        panel.querySelector("b").textContent = name;
-        return;
-      }
-      panel.innerHTML = '<h3></h3><p class="city-memory-text"></p>';
-      panel.querySelector("h3").textContent = name;
-      panel.querySelector(".city-memory-text").textContent = memory || "关于这座城市的记忆还在路上……";
-    });
-  }
-
   /* ---------- 首页统计卡片：点击有个小动效后再跳转 ---------- */
   function initStatLinks() {
     document.addEventListener("click", function (e) {
@@ -375,7 +352,6 @@
       initCounters();
       initTogether();
       initGalleryMulti();
-      initCityDots();
     }
   };
   window.XXF.refresh();
