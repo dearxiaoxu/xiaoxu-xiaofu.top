@@ -35,59 +35,20 @@
     </div>
   </header>
 
-  <main>
-    <section class="page-banner">
-      <div class="container">
-        <p class="breadcrumb"><a href="index.html">首页</a> / 走过的城市</p>
-        <h1>走过的城市</h1>
-        <p>每一座点亮的城市，都藏着我们一起写下的记忆。点击地图上的轮廓看看。</p>
-      </div>
-    </section>
+  <main class="cities-main">
+    <div id="city-map" class="city-map" role="application" aria-label="走过的城市地图"></div>
 
-    <section class="section" style="padding-top: 24px;">
-      <div class="container">
-        <div class="city-map-layout">
-          <div class="card city-map-card">
-            <div id="city-map" class="city-map"></div>
-          </div>
-          <aside class="card city-memory-panel" id="city-memory"></aside>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="container">
-      <div class="footer-grid">
-        <div class="footer-brand">
-          <a class="logo" href="index.html"><span class="logo-mark">xf</span><span class="js-site-name">xiaoxu & xiaofu</span></a>
-          <p id="footer-tagline">记录 xiaoxu 与 xiaofu 的代码与生活。</p>
-        </div>
-        <div class="footer-col">
-          <h4>导航</h4>
-          <a href="about.html">关于我们</a>
-          <a href="blog.html">博客</a>
-          <a href="projects.html">项目</a>
-        </div>
-        <div class="footer-col">
-          <h4>更多</h4>
-          <a href="gallery.html">生活瞬间</a>
-          <a href="contact.html">联系我们</a>
-          <a href="post.html?id=hello-world">建站小记</a>
-        </div>
-        <div class="footer-col">
-          <h4>关注</h4>
-          <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
-          <a href="#">微博</a>
-          <a href="#">小红书</a>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <span>© <span data-year>2026</span> <span id="footer-brand-name">xiaoxu & xiaofu</span> · <a href="https://www.xiaoxu-xiaofu.top">www.xiaoxu-xiaofu.top</a></span>
-        <span id="footer-note">闲来构建</span>
-      </div>
+    <div class="city-map-title">
+      <p class="city-map-kicker">cities we have been</p>
+      <h1>走过的城市</h1>
+      <p id="city-map-subtitle">已点亮 0 座城市 · 点击轮廓查看记忆</p>
     </div>
-  </footer>
+
+    <aside class="city-memory-panel" id="city-memory" aria-live="polite" aria-hidden="true">
+      <button class="city-memory-close" id="city-memory-close" type="button" aria-label="关闭记忆卡片">✕</button>
+      <div class="city-memory-body" id="city-memory-body"></div>
+    </aside>
+  </main>
 
   <script src="js/main.js"></script>
   <script src="js/site.js"></script>

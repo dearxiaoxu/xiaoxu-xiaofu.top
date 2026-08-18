@@ -277,12 +277,12 @@
     var cities = (DB.cities || []).filter(function (c) { return typeof c.lat === "number" && typeof c.lng === "number"; });
     var map = $("city-map");
     var panel = $("city-memory");
+    var panelBody = $("city-memory-body");
+    var subtitle = $("city-map-subtitle");
     if (!map) return;
 
     var visited = cities.filter(function (c) { return c.visited; });
-    if (panel) {
-      panel.innerHTML = '<div class="city-memory-empty"><b>👣 一起走过 ' + visited.length + ' 座城市</b><p>地图上点亮的轮廓，是我们一起走过的城市。点击轮廓或圆点看看记忆。</p></div>';
-    }
+    if (subtitle) subtitle.textContent = "已点亮 " + visited.length + " 座城市 · 点击轮廓查看记忆";
 
     if (!window.T || !window.T.Map) {
       map.innerHTML = '<div class="city-map-fallback"><p>地图正在加载中，请确认网络可以访问天地图服务。</p></div>';
@@ -292,8 +292,13 @@
     try {
       var tmap = new window.T.Map(map.id);
       tmap.centerAndZoom(new window.T.LngLat(104.0, 35.0), 4);
-      if (window.T.Control && window.T.Control.Zoom) tmap.addControl(new window.T.Control.Zoom());
       if (window.T.Control && window.T.Control.Scale) tmap.addControl(new window.T.Control.Scale());
+
+      function refreshMapSize() {
+        try { if (tmap.checkResize) tmap.checkResize(); } catch (e) { /* 忽略 */ }
+      }
+      window.addEventListener("resize", refreshMapSize);
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", refreshMapSize);
 
       var dotIconUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
@@ -302,11 +307,20 @@
       );
 
       function showCity(c) {
-        if (!panel) return;
-        panel.innerHTML = '<h3>' + esc(c.name) + '</h3>' +
-          '<p class="city-memory-text">' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p>' +
-          '<p class="city-memory-meta">已点亮 · 一起走过</p>';
+        if (panelBody) {
+          panelBody.innerHTML = '<h3>' + esc(c.name) + '</h3>' +
+            '<p class="city-memory-text">' + esc(c.memory || "关于这座城市的记忆还在路上……") + '</p>' +
+            '<p class="city-memory-meta">已点亮 · 一起走过</p>';
+        }
+        if (panel) { panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); }
       }
+
+      function hideCity() {
+        if (panel) { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); }
+      }
+
+      var closeBtn = $("city-memory-close");
+      if (closeBtn) closeBtn.addEventListener("click", hideCity);
 
       function cityInfo(c) {
         var html = '<div class="tianditu-info"><b>' + esc(c.name) + '</b>' +

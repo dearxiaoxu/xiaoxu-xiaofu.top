@@ -1309,30 +1309,33 @@ ul, ol { list-style: none; }
   font-weight: 700;
 }
 
-/* ---------- 城市地图（天地图） ---------- */
-.city-map-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  align-items: start;
+/* ---------- 城市地图（全屏天地图） ---------- */
+.cities-main {
+  position: relative;
+  height: calc(100vh - var(--header-h));
+  height: calc(100dvh - var(--header-h));
+  min-height: 460px;
+  background: #0b1118;
+  overflow: hidden;
 }
-.city-map-card {
-  padding: 14px;
-  background: linear-gradient(160deg, #171410, #221c15);
-  border: 1px solid rgba(250, 137, 82, 0.2);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+.cities-main::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 170px;
+  background: linear-gradient(180deg, rgba(11, 17, 24, 0.52), rgba(11, 17, 24, 0));
+  pointer-events: none;
+  z-index: 1;
 }
 .city-map {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: min(72vh, 580px);
-  min-height: 360px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  height: 100%;
   background: #10181f;
-  box-shadow: inset 0 0 0 1px rgba(250, 137, 82, 0.12), 0 18px 50px rgba(0, 0, 0, 0.42);
 }
-.city-map .tdt-control-zoom,
 .city-map .tdt-control-scale {
   border-radius: 8px;
   overflow: hidden;
@@ -1355,14 +1358,96 @@ ul, ol { list-style: none; }
 .tianditu-info b { display: block; margin-bottom: 4px; font-size: 0.95rem; }
 .tianditu-info p { margin: 0; white-space: pre-wrap; }
 
-.city-memory-panel { padding: 22px; min-height: 200px; }
-.city-memory-empty { text-align: center; color: var(--ink-3); padding: 22px 0; }
-.city-memory-empty b { color: var(--ink); font-family: var(--font-serif); font-size: 1.05rem; }
-.city-memory-panel h3 { font-family: var(--font-serif); font-size: 1.35rem; }
+.city-map-title {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  z-index: 2;
+  pointer-events: none;
+}
+.city-map-kicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.95;
+}
+.city-map-title h1 {
+  margin: 4px 0 0;
+  font-size: clamp(26px, 3.2vw, 34px);
+  line-height: 1.1;
+  color: #fff;
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.4);
+}
+.city-map-title p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.86);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+}
+
+.city-memory-panel {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  width: min(330px, calc(100vw - 48px));
+  z-index: 3;
+  padding: 18px 18px 20px;
+  background: var(--card-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.city-memory-panel.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.city-memory-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.city-memory-close:hover {
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  color: var(--ink);
+}
+.city-memory-body h3 {
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  padding-right: 24px;
+  color: var(--ink);
+}
 .city-memory-text { color: var(--ink-2); margin-top: 10px; white-space: pre-wrap; }
 .city-memory-meta { margin-top: 12px; font-size: 0.78rem; letter-spacing: 0.04em; color: var(--accent); }
 
-@media (max-width: 860px) {
-  .city-map-layout { grid-template-columns: 1fr; }
-  .city-map { height: min(60vh, 460px); min-height: 320px; }
+@media (max-width: 640px) {
+  .city-map-title { top: 14px; left: 16px; }
+  .city-map-title h1 { font-size: 24px; }
+  .city-memory-panel {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 46vh;
+    overflow: auto;
+    transform: translateY(16px);
+  }
+  .city-memory-panel.open { transform: translateY(0); }
 }
