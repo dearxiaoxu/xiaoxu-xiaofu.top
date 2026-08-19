@@ -245,6 +245,11 @@ function getContent() {
   return content;
 }
 
+function healthCheck() {
+  const row = db.prepare("SELECT 1 AS ok").get();
+  return !!row && row.ok === 1;
+}
+
 function saveContent(obj) {
   const content = defaultContent();
   CONTENT_OBJECT_KEYS.forEach((k) => {
@@ -365,4 +370,4 @@ function close() {
   }
 }
 
-module.exports = { open, getContent, saveContent, addMessage, getComments, addComment, setCommentStatus, deleteComment, close };
+module.exports = { open, getContent, healthCheck, saveContent, addMessage, getComments, addComment, setCommentStatus, deleteComment, close };

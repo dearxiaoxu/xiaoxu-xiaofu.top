@@ -122,7 +122,7 @@ fi
 sleep 1
 if [ "$DRY_RUN" = false ]; then
   systemctl is-active --quiet ${APP_NAME} || warn "服务未运行，请查看：journalctl -u ${APP_NAME} -n 50"
-  curl -sf "http://127.0.0.1:${PORT}/api/content" >/dev/null && info "服务健康检查通过 ✓" || warn "本地健康检查未通过"
+  curl -sf "http://127.0.0.1:${PORT}/healthz" >/dev/null && info "服务健康检查通过 ✓" || warn "本地健康检查未通过（请检查 /healthz）"
 fi
 
 PUB_IP=$(curl -sf --max-time 5 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "你的服务器IP")

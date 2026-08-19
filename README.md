@@ -58,6 +58,9 @@ npm start
 - **文章级评论**：每篇文章可评论（防刷限频 + 蜜罐 + 转义），新评论默认待审核，后台可通过/删除
 - **社交分享图**：全站 og:image 服务端注入（1200×630），后台「站点设置」可上传自定义分享图
 - **SEO**：`/robots.txt` + `/sitemap.xml` 动态生成，文章页 title/description 服务端注入（爬虫可抓）
+- **RSS**：`/rss.xml` 动态输出文章订阅，博客页提供订阅入口
+- **健康检查**：`/healthz` 返回服务、SQLite、版本和运行时间状态
+- **安全响应头**：默认启用 CSP、nosniff、SAMEORIGIN、Referrer-Policy 和 Permissions-Policy
 - **访问统计**：自研 PV/UV/热帖 TOP5，仅后台「数据与安全」可见，前台零痕迹；`/api/counter` 提供公开总访问量
 - **技术感动效**：页面转场、自定义光标、滚动进度条、Hero 入场动画、终端状态块（均支持 reduced-motion 降级）
 
@@ -78,7 +81,8 @@ npm start
 | GET | `/api/stats` | 访问统计 PV/UV/热帖（需 token） |
 | GET | `/api/counter` | 公开总访问量 `{"pv"}` |
 | GET | `/api/logs` | 运行日志（需 token） |
-| GET | `/robots.txt` · `/sitemap.xml` | 搜索引擎收录文件（动态生成） |
+| GET | `/robots.txt` · `/sitemap.xml` · `/rss.xml` | 搜索引擎和订阅文件（动态生成） |
+| GET | `/healthz` | 服务健康检查（不含业务数据） |
 
 ## 存储与备份
 
@@ -86,6 +90,7 @@ npm start
 - `data/db.json` 仅在首次启动时作为种子导入，之后以 `site.db` 为准，可作为初始备份保留；
 - 上传图片在 `data/uploads/`，建议定期备份整个 `data/` 目录；
 - 后台「数据与安全」页支持一键下载内容 JSON 备份、导入恢复。
+- 也可以执行 `npm run backup` 将整个 `data/` 复制到项目外的 `../xiaofu-backups/`；恢复前先停止服务。
 
 ## 部署上线
 

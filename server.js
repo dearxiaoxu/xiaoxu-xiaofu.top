@@ -22,6 +22,7 @@ const BOUNDARY_DIR = path.join(ROOT, "assets", "boundaries");
 const CHINA_MAP_FILE = path.join(ROOT, "assets", "china-provinces.json");
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const APP_VERSION = require("./package.json").version || "unknown";
 
 const TOKEN_TTL = 7 * 24 * 3600 * 1000; // 7 天
 const BODY_LIMIT = 16 * 1024 * 1024;    // 16MB（含 base64 图片）
@@ -183,7 +184,8 @@ function flushStats() {
   } catch (e) { /* 忽略 */ }
 }
 function recordView(pathname, postId, ip) {
-  if (pathname.startsWith("/api/") || pathname.startsWith("/admin")) return;
+  if (pathname.startsWith("/api/") || pathname.startsWith("/admin") ||
+      ["/healthz", "/robots.txt", "/sitemap.xml", "/rss.xml"].includes(pathname)) return;
   stats.totalPv++;
   const day = todayStr();
   if (!stats.days[day]) stats.days[day] = { pv: 0, uv: 0 };
@@ -273,7 +275,7 @@ function injectMeta(html, meta) {
 function routeMeta(req, pathname) {
   const content = store.getContent();
   const site = content.site || {};
-  const domain = "https://" + (site.domain || "www.xiaoxu-xiaofu.top");
+  const domain = publicBase(content);
   const defaultImage = site.shareImage || "/assets/og-default.png";
   const abs = function (img) {
     img = String(img || defaultImage);
@@ -315,6 +317,12 @@ function routeMeta(req, pathname) {
     meta.canonical = meta.ogUrl;
   }
   return meta;
+}
+
+function publicBase(content) {
+  const raw = String(content && content.site && content.site.domain || "www.xiaoxu-xiaofu.top")
+    .trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return "https://" + (raw || "www.xiaoxu-xiaofu.top");
 }
 
 function imageHeaderMatches(ext, buf) {
@@ -643,21 +651,40 @@ const server = http.createServer(async (req, res) => {
   const ext = path.extname(pathname).toLowerCase();
   const isAsset = [".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".avif", ".woff2", ".map"].includes(ext);
 
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'");
+
   // 请求日志：记录所有 API 与页面访问（静态资源太吵，跳过）
   res.on("finish", function () {
     if (isAsset && !pathname.startsWith("/api/")) return;
     log("REQ", req.method + " " + safeDecode(u.pathname + u.search).slice(0, 140) + " → " + res.statusCode + " " + (Date.now() - start) + "ms ip=" + ip);
   });
 
+  if (pathname === "/healthz" && req.method === "GET") {
+    try {
+      const dbOk = store.healthCheck();
+      const body = JSON.stringify({ status: dbOk ? "ok" : "degraded", service: "xiaoxu-xiaofu", version: APP_VERSION, uptime: Math.floor(process.uptime()), db: dbOk ? "ok" : "error" });
+      res.writeHead(dbOk ? 200 : 503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(body);
+    } catch (e) {
+      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(JSON.stringify({ status: "degraded", service: "xiaoxu-xiaofu", version: APP_VERSION, db: "error" }));
+    }
+  }
+
   // robots.txt 与 sitemap.xml（动态生成）
   if (pathname === "/robots.txt") {
+    const base = publicBase(store.getContent());
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
-    return res.end("User-agent: *\nAllow: /\n\nSitemap: https://www.xiaoxu-xiaofu.top/sitemap.xml\n");
+    return res.end("User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: " + base + "/sitemap.xml\n");
   }
   if (pathname === "/sitemap.xml") {
     try {
       const content = store.getContent();
-      const base = "https://" + (content.site && content.site.domain ? content.site.domain : "www.xiaoxu-xiaofu.top");
+      const base = publicBase(content);
       const esc = function (s) {
         return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       };
@@ -683,6 +710,43 @@ const server = http.createServer(async (req, res) => {
       return res.end(xml);
     } catch (e) {
       res.writeHead(500); return res.end("sitemap error");
+    }
+  }
+
+  if (pathname === "/rss.xml") {
+    try {
+      const content = store.getContent();
+      const base = publicBase(content);
+      const site = content.site || {};
+      const esc = function (s) {
+        return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+      };
+      const posts = (content.posts || []).slice().sort(function (a, b) {
+        return String(b.date || "").localeCompare(String(a.date || ""));
+      });
+      const items = posts.map(function (p) {
+        const link = base + "/post.html?id=" + encodeURIComponent(p.id);
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(String(p.date || "")) ? new Date(p.date + "T00:00:00Z").toUTCString() : "";
+        return "    <item>" +
+          "<title>" + esc(p.title) + "</title>" +
+          "<link>" + esc(link) + "</link>" +
+          "<guid isPermaLink=\"true\">" + esc(link) + "</guid>" +
+          "<description>" + esc(p.excerpt || p.body || "") + "</description>" +
+          (date ? "<pubDate>" + esc(date) + "</pubDate>" : "") +
+          "</item>";
+      }).join("\n");
+      const xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+        "<rss version=\"2.0\"><channel>" +
+        "<title>" + esc(site.name || "xiaoxu & xiaofu") + "</title>" +
+        "<link>" + esc(base + "/") + "</link>" +
+        "<description>" + esc(site.description || "") + "</description>" +
+        "<language>zh-CN</language>" +
+        (items ? "\n" + items : "") +
+        "\n</channel></rss>\n";
+      res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(xml);
+    } catch (e) {
+      res.writeHead(500); return res.end("rss error");
     }
   }
 
